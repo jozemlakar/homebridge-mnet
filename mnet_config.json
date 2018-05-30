@@ -1,0 +1,423 @@
+{
+    "mnet_ip": "192.168.0.10",
+    "AllowWebserver": true,
+    "WebserverPort": 18084,
+    "Devices": [
+        {
+            "DeviceName": "Fitness room air conditioner",
+            "Services": [
+                {
+                    "ServiceType": "HeaterCooler",
+                    "ServiceName": "Air condition",
+                    "Characteristics": [
+                        {
+                            "Type": "Active",
+                            "Set": [
+                                "1/1/1"
+                            ],
+                            "Listen": [
+                                "1/1/2"
+                            ]
+                        },
+                        {
+                            "Type": "CurrentHeaterCoolerState",
+                            "Listen": [
+                                "1/2/2"
+                            ]
+                        },
+                        {
+                            "Type": "TargetHeaterCoolerState",
+                            "Set": [
+                                "1/3/1"
+                            ],
+                            "Listen": [
+                                "1/3/2"
+                            ]
+                        },
+                        {
+                            "Type": "CurrentTemperature",
+                            "Listen": [
+                                "1/4/2"
+                            ]
+                        },
+                        {
+                            "Type": "CoolingThresholdTemperature",
+                            "Set": [
+                                "1/5/1"
+                            ],
+                            "Listen": [
+                                "1/5/2"
+                            ],
+                            "MinValue": 16,
+                            "MaxValue": 31
+                        },
+                        {
+                            "Type": "HeatingThresholdTemperature",
+                            "Set": [
+                                "1/6/1"
+                            ],
+                            "Listen": [
+                                "1/6/2"
+                            ],
+                            "MinValue": 16,
+                            "MaxValue": 31
+                        },
+                        {
+                            "Type": "RotationSpeed",
+                            "Set": [
+                                "1/7/1"
+                            ],
+                            "Listen": [
+                                "1/7/2"
+                            ]
+                        },
+                        {
+                            "Type": "SwingMode",
+                            "Set": [
+                                "1/8/1"
+                            ],
+                            "Listen": [
+                                "1/8/2"
+                            ]
+                        }
+                    ],
+                    "subtype": "SUB_ad6f5d26-4e1d-437d-847d-78ae75ee658c"
+                }
+            ],
+            "UUID": "ad099102-e138-4cae-b5e0-4a188a52d9d4"
+        },
+        {
+            "DeviceName": "Living room air conditioner",
+            "Services": [
+                {
+                    "ServiceType": "HeaterCooler",
+                    "ServiceName": "Air condition",
+                    "Characteristics": [
+                        {
+                            "Type": "Active",
+                            "Set": [
+                                "2/1/1"
+                            ],
+                            "Listen": [
+                                "2/1/2"
+                            ]
+                        },
+                        {
+                            "Type": "CurrentHeaterCoolerState",
+                            "Listen": [
+                                "2/2/2"
+                            ]
+                        },
+                        {
+                            "Type": "TargetHeaterCoolerState",
+                            "Set": [
+                                "2/3/1"
+                            ],
+                            "Listen": [
+                                "2/3/2"
+                            ]
+                        },
+                        {
+                            "Type": "CurrentTemperature",
+                            "Listen": [
+                                "2/4/2"
+                            ]
+                        },
+                        {
+                            "Type": "CoolingThresholdTemperature",
+                            "Set": [
+                                "2/5/1"
+                            ],
+                            "Listen": [
+                                "2/5/2"
+                            ],
+                            "MinValue": 16,
+                            "MaxValue": 31
+                        },
+                        {
+                            "Type": "HeatingThresholdTemperature",
+                            "Set": [
+                                "2/6/1"
+                            ],
+                            "Listen": [
+                                "2/6/2"
+                            ],
+                            "MinValue": 16,
+                            "MaxValue": 31
+                        },
+                        {
+                            "Type": "RotationSpeed",
+                            "Set": [
+                                "2/7/1"
+                            ],
+                            "Listen": [
+                                "2/7/2"
+                            ]
+                        },
+                        {
+                            "Type": "SwingMode",
+                            "Set": [
+                                "2/8/1"
+                            ],
+                            "Listen": [
+                                "2/8/2"
+                            ]
+                        }
+                    ],
+                    "subtype": "SUB_ad6f5d26-4e1d-437d-847d-78ae75ee658c"
+                }
+            ],
+            "UUID": "fdac5dec-b7f2-4d96-85ef-d56bfa9c80dc"
+        },
+        {
+            "DeviceName": "Dining room air conditioner",
+            "Services": [
+                {
+                    "ServiceType": "HeaterCooler",
+                    "ServiceName": "Air condition",
+                    "Characteristics": [
+                        {
+                            "Type": "Active",
+                            "Set": [
+                                "3/1/1"
+                            ],
+                            "Listen": [
+                                "3/1/2"
+                            ]
+                        },
+                        {
+                            "Type": "CurrentHeaterCoolerState",
+                            "Listen": [
+                                "3/2/2"
+                            ]
+                        },
+                        {
+                            "Type": "TargetHeaterCoolerState",
+                            "Set": [
+                                "3/3/1"
+                            ],
+                            "Listen": [
+                                "3/3/2"
+                            ]
+                        },
+                        {
+                            "Type": "CurrentTemperature",
+                            "Listen": [
+                                "3/4/2"
+                            ]
+                        },
+                        {
+                            "Type": "CoolingThresholdTemperature",
+                            "Set": [
+                                "3/5/1"
+                            ],
+                            "Listen": [
+                                "3/5/2"
+                            ],
+                            "MinValue": 16,
+                            "MaxValue": 31
+                        },
+                        {
+                            "Type": "HeatingThresholdTemperature",
+                            "Set": [
+                                "3/6/1"
+                            ],
+                            "Listen": [
+                                "3/6/2"
+                            ],
+                            "MinValue": 16,
+                            "MaxValue": 31
+                        },
+                        {
+                            "Type": "RotationSpeed",
+                            "Set": [
+                                "3/7/1"
+                            ],
+                            "Listen": [
+                                "3/7/2"
+                            ]
+                        },
+                        {
+                            "Type": "SwingMode",
+                            "Set": [
+                                "3/8/1"
+                            ],
+                            "Listen": [
+                                "3/8/2"
+                            ]
+                        }
+                    ],
+                    "subtype": "SUB_ad6f5d26-4e1d-437d-847d-78ae75ee658c"
+                }
+            ],
+            "UUID": "43a2e265-a44a-4eb4-a3c4-2576f4188339"
+        },
+        {
+            "DeviceName": "Wardrobe air conditioner",
+            "Services": [
+                {
+                    "ServiceType": "HeaterCooler",
+                    "ServiceName": "Air condition",
+                    "Characteristics": [
+                        {
+                            "Type": "Active",
+                            "Set": [
+                                "4/1/1"
+                            ],
+                            "Listen": [
+                                "4/1/2"
+                            ]
+                        },
+                        {
+                            "Type": "CurrentHeaterCoolerState",
+                            "Listen": [
+                                "4/2/2"
+                            ]
+                        },
+                        {
+                            "Type": "TargetHeaterCoolerState",
+                            "Set": [
+                                "4/3/1"
+                            ],
+                            "Listen": [
+                                "4/3/2"
+                            ]
+                        },
+                        {
+                            "Type": "CurrentTemperature",
+                            "Listen": [
+                                "4/4/2"
+                            ]
+                        },
+                        {
+                            "Type": "CoolingThresholdTemperature",
+                            "Set": [
+                                "4/5/1"
+                            ],
+                            "Listen": [
+                                "4/5/2"
+                            ],
+                            "MinValue": 16,
+                            "MaxValue": 31
+                        },
+                        {
+                            "Type": "HeatingThresholdTemperature",
+                            "Set": [
+                                "4/6/1"
+                            ],
+                            "Listen": [
+                                "4/6/2"
+                            ],
+                            "MinValue": 16,
+                            "MaxValue": 31
+                        },
+                        {
+                            "Type": "RotationSpeed",
+                            "Set": [
+                                "4/7/1"
+                            ],
+                            "Listen": [
+                                "4/7/2"
+                            ]
+                        },
+                        {
+                            "Type": "SwingMode",
+                            "Set": [
+                                "4/8/1"
+                            ],
+                            "Listen": [
+                                "4/8/2"
+                            ]
+                        }
+                    ],
+                    "subtype": "SUB_ad6f5d26-4e1d-437d-847d-78ae75ee658c"
+                }
+            ],
+            "UUID": "c4775947-2387-47ce-86b3-2dccc7371b7d"
+        },
+        {
+            "DeviceName": "Bedroom air conditioner",
+            "Services": [
+                {
+                    "ServiceType": "HeaterCooler",
+                    "ServiceName": "Air condition",
+                    "Characteristics": [
+                        {
+                            "Type": "Active",
+                            "Set": [
+                                "5/1/1"
+                            ],
+                            "Listen": [
+                                "5/1/2"
+                            ]
+                        },
+                        {
+                            "Type": "CurrentHeaterCoolerState",
+                            "Listen": [
+                                "5/2/2"
+                            ]
+                        },
+                        {
+                            "Type": "TargetHeaterCoolerState",
+                            "Set": [
+                                "5/3/1"
+                            ],
+                            "Listen": [
+                                "5/3/2"
+                            ]
+                        },
+                        {
+                            "Type": "CurrentTemperature",
+                            "Listen": [
+                                "5/4/2"
+                            ]
+                        },
+                        {
+                            "Type": "CoolingThresholdTemperature",
+                            "Set": [
+                                "5/5/1"
+                            ],
+                            "Listen": [
+                                "5/5/2"
+                            ],
+                            "MinValue": 16,
+                            "MaxValue": 31
+                        },
+                        {
+                            "Type": "HeatingThresholdTemperature",
+                            "Set": [
+                                "5/6/1"
+                            ],
+                            "Listen": [
+                                "5/6/2"
+                            ],
+                            "MinValue": 16,
+                            "MaxValue": 31
+                        },
+                        {
+                            "Type": "RotationSpeed",
+                            "Set": [
+                                "5/7/1"
+                            ],
+                            "Listen": [
+                                "5/7/2"
+                            ]
+                        },
+                        {
+                            "Type": "SwingMode",
+                            "Set": [
+                                "5/8/1"
+                            ],
+                            "Listen": [
+                                "5/8/2"
+                            ]
+                        }
+                    ],
+                    "subtype": "SUB_ad6f5d26-4e1d-437d-847d-78ae75ee658c"
+                }
+            ],
+            "UUID": "34083e6d-a5a5-4ef1-9f89-51b42ca4cc7a"
+        }
+    ],
+    "GroupAddresses": []
+}
