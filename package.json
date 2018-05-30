@@ -1,0 +1,32 @@
+{
+	"name": "homebridge-mnet",
+	"version": "1.0.0",
+	"description": "homebridge shim for M-Net home automation.",
+	"main": "index.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"start": "echo \"Error: configure and run homebridge to start\" && exit 1"
+	},
+	"engines": {
+		"node": ">7.0.0",
+		"homebridge": ">=0.4.42"
+	},
+	"keywords": [
+		"homebridge-plugin",
+		"homebridge",
+		"MNET",
+		"mnet",
+		"knxd",
+		"M-Net",
+		"Siri"
+	],
+	"dependencies": {
+		"deep-diff": "^1.0.0-pre.2",
+		"eibd": "^0.3.9",
+		"homebridge": "^0.4.42",
+		"xml2js": "^0.4.19"
+	},
+	"devDependencies": {},
+	"author": "Joze Mlakar <Joze.Mlakar@ixtlan-team.si> (http://www.ixtlan-team.si)",
+	"license": "ISC"
+}
