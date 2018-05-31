@@ -16,13 +16,11 @@
 		"homebridge",
 		"MNET",
 		"mnet",
-		"knxd",
 		"M-Net",
 		"Siri"
 	],
 	"dependencies": {
 		"deep-diff": "^1.0.0-pre.2",
-		"eibd": "^0.3.9",
 		"homebridge": "^0.4.42",
 		"xml2js": "^0.4.19"
 	},
