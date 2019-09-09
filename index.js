@@ -79,7 +79,7 @@ function MNETPlatform(log, config, newAPI) {
 	globs.readRequests = {};
 
 	MNETAccess.setGlobs(globs); // init link for module;
-    mnetmonitor.startMonitoring();
+        mnetmonitor.startMonitoring(globs);
 	// mnetmonitor.startMonitor({
 	// 	host : globs.mnetd_ip,
 	// 	port : globs.mnetd_port
