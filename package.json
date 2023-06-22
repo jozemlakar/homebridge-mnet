@@ -21,7 +21,7 @@
 	],
 	"dependencies": {
 		"deep-diff": "^1.0.2",
-		"homebridge": "^0.4.50",
+		"homebridge": "^1.6.1",
 		"xml2js": "^0.5.0"
 	},
 	"author": "Joze Mlakar <Joze.Mlakar@ixtlan-team.si> (http://www.ixtlan-team.si)",
