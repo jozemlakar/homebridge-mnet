@@ -4,11 +4,11 @@
     "WebserverPort": 18084,
     "Devices": [
         {
-            "DeviceName": "Fitness room air conditioner",
+            "DeviceName": "Fitness Air conditioner",
             "Services": [
                 {
                     "ServiceType": "HeaterCooler",
-                    "ServiceName": "Air condition",
+                    "ServiceName": "Fitness Air conditioner",
                     "Characteristics": [
                         {
                             "Type": "Active",
@@ -87,11 +87,11 @@
             "UUID": "ad099102-e138-4cae-b5e0-4a188a52d9d4"
         },
         {
-            "DeviceName": "Living room air conditioner",
+            "DeviceName": "Living room Air conditioner",
             "Services": [
                 {
                     "ServiceType": "HeaterCooler",
-                    "ServiceName": "Air condition",
+                    "ServiceName": "Living Room Air conditioner",
                     "Characteristics": [
                         {
                             "Type": "Active",
@@ -170,11 +170,11 @@
             "UUID": "fdac5dec-b7f2-4d96-85ef-d56bfa9c80dc"
         },
         {
-            "DeviceName": "Dining room air conditioner",
+            "DeviceName": "Dining room Air conditioner",
             "Services": [
                 {
                     "ServiceType": "HeaterCooler",
-                    "ServiceName": "Air condition",
+                    "ServiceName": "Dining Room Air conditioner",
                     "Characteristics": [
                         {
                             "Type": "Active",
@@ -253,11 +253,11 @@
             "UUID": "43a2e265-a44a-4eb4-a3c4-2576f4188339"
         },
         {
-            "DeviceName": "Wardrobe air conditioner",
+            "DeviceName": "Wardrobe Air conditioner",
             "Services": [
                 {
                     "ServiceType": "HeaterCooler",
-                    "ServiceName": "Air condition",
+                    "ServiceName": "Wardrobe Air conditioner",
                     "Characteristics": [
                         {
                             "Type": "Active",
@@ -336,11 +336,11 @@
             "UUID": "c4775947-2387-47ce-86b3-2dccc7371b7d"
         },
         {
-            "DeviceName": "Bedroom air conditioner",
+            "DeviceName": "Bedroom Air conditioner",
             "Services": [
                 {
                     "ServiceType": "HeaterCooler",
-                    "ServiceName": "Air condition",
+                    "ServiceName": "Bedroom Air conditioner",
                     "Characteristics": [
                         {
                             "Type": "Active",
