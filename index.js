@@ -41,13 +41,13 @@ function MNETPlatform(log, config, newAPI) {
 	 * @param {string} comment
 	 * 
 	 */
-	globs.info = function(comment) {
+	globs.info = function (comment) {
 		that.log.info(comment);
 	};
-	globs.debug = function(comment) {
+	globs.debug = function (comment) {
 		that.log.debug(comment);
 	};
-	globs.errorlog = function(comment) {
+	globs.errorlog = function (comment) {
 		that.log.error(comment);
 	};
 
@@ -79,7 +79,7 @@ function MNETPlatform(log, config, newAPI) {
 	globs.readRequests = {};
 
 	MNETAccess.setGlobs(globs); // init link for module;
-        mnetmonitor.startMonitoring(globs);
+	mnetmonitor.startMonitoring(globs);
 	// mnetmonitor.startMonitor({
 	// 	host : globs.mnetd_ip,
 	// 	port : globs.mnetd_port
@@ -87,7 +87,7 @@ function MNETPlatform(log, config, newAPI) {
 
 	// plugin-2 system: wait for the homebridge to finish restoring the accessories from its own persistence layer.
 	if (newAPI) {
-		newAPI.on('didFinishLaunching', function() {
+		newAPI.on('didFinishLaunching', function () {
 			globs.info('homebridge event didFinishLaunching');
 			this.configure();
 		}.bind(this));
@@ -97,7 +97,7 @@ function MNETPlatform(log, config, newAPI) {
 
 function registry(homebridgeAPI) {
 	console.log("homebridge API version: " + homebridgeAPI.version);
-	
+
 	/*
 	 * Experimental: Look for a user file called mnet-ignore.txt in the user config path.
 	 * If it is there, exit here and DO NOT REGISTER the platform
@@ -106,11 +106,11 @@ function registry(homebridgeAPI) {
 	let path = require('path');
 	let checkfilepath = path.join(homebridgeAPI.user.storagePath(), 'mnet-ignore.txt');
 	if (fs.existsSync(checkfilepath)) {
-		console.log('[WARNING] Found blocking file, exiting now. To load homebridge-mnet, remove '+ checkfilepath);
+		console.log('[WARNING] Found blocking file, exiting now. To load homebridge-mnet, remove ' + checkfilepath);
 		return;
 	}
 	// END OF INSERTION FOR BRANCH ignore-option
-	
+
 	Service = homebridgeAPI.hap.Service;
 	Characteristic = homebridgeAPI.hap.Characteristic;
 	globs.Service = Service;
@@ -121,13 +121,13 @@ function registry(homebridgeAPI) {
 	 * 
 	 */
 	require('./lib/customtypes/mnet_thermostat.js')(homebridgeAPI);
-	
+
 	/*
 	 *  get the data for the web server (show available services and characteristics)
 	 */
-	
+
 	globs.webdata = getServiceData(globs);
-	
+
 	//debug
 	//iterate(globs.API.hap.Characteristic.MNETThermAtHome);
 	//iterate(globs.API.hap.Characteristic.On);
@@ -150,7 +150,7 @@ module.exports = registry;
  * 
  * @param {platformAccessory} accessory
  */
-MNETPlatform.prototype.configureAccessory = function(accessory) {
+MNETPlatform.prototype.configureAccessory = function (accessory) {
 	console.log("Plugin - Configure Accessory: " + accessory.displayName + " --> Added to restoredAccessories[]");
 
 	// set the accessory to reachable if plugin can currently process the accessory
@@ -170,7 +170,7 @@ MNETPlatform.prototype.configureAccessory = function(accessory) {
  * This is my event handler for the "didFinishLaunching" event of the newAPI
  */
 
-MNETPlatform.prototype.configure = function() {
+MNETPlatform.prototype.configure = function () {
 	globs.info('Configuration starts');
 	userOpts.LogHomebridgeMNETSTarts();
 	// homebridge has now finished restoring the accessories from its persistence layer.
@@ -225,15 +225,15 @@ MNETPlatform.prototype.configure = function() {
 	//now we need to store our updated config file to disk, or else all that is in vain next startup!
 	globs.info('Saving config file!');
 	userOpts.storeConfig();
-	
-	
+
+
 	/*********************************************************************************/
 	// start the tiny web server for deleting orphaned devices
 	globs.debug('BEFORE http.createServer');
-	var that=this;
+	var that = this;
 	this.startUpDateAndTime = new Date();
 	this.startUpDateAndTimeString = this.startUpDateAndTime.toString();
-	this.requestServer = http.createServer(function(request, response) {
+	this.requestServer = http.createServer(function (request, response) {
 		globs.debug('http.createServer CALLBACK FUNCTION URL=' + request.url);
 		var reqparsed = request.url.substr(1).split('?');
 		var params = {};
@@ -278,10 +278,10 @@ MNETPlatform.prototype.configure = function() {
 				if (tdev.UUID !== 'ERASED') {
 					response.write('Device ' + tdev.displayName);
 					response.write(' <a href="/delete?UUID=' + tdev.UUID + '">[Delete from cache!]</a> ' + ' <BR>');
-// TODO: List Services here - Services are the prime homekit objects!
+					// TODO: List Services here - Services are the prime homekit objects!
 				}
 			}
-			if (that.config.AllowKillHomebridge===true) {
+			if (that.config.AllowKillHomebridge === true) {
 				response.write(' <br><hr><br><a href="/kill">Kill homebridge</a> by throwing an Error. Use this to restart HomeBridge if you have it configured as a self-starting service ' + ' <BR>');
 			}
 			response.write(`<HR><BR>Available pages are <br>
@@ -302,12 +302,12 @@ MNETPlatform.prototype.configure = function() {
 					globs.debug(params.UUID);
 					var delAcc = getAccessoryByUUID(globs.restoredAccessories, params.UUID);
 					if (delAcc) {
-						globs.newAPI.unregisterPlatformAccessories(undefined, undefined, [ delAcc ]);
+						globs.newAPI.unregisterPlatformAccessories(undefined, undefined, [delAcc]);
 						delAcc.UUID = "ERASED";
 					} else {
 						delAcc = getAccessoryByUUID(globs.devices, params.UUID);
 						if (delAcc) {
-							globs.newAPI.unregisterPlatformAccessories(undefined, undefined, [ delAcc ]);
+							globs.newAPI.unregisterPlatformAccessories(undefined, undefined, [delAcc]);
 							delAcc.UUID = "ERASED";
 						}
 					}
@@ -320,13 +320,13 @@ MNETPlatform.prototype.configure = function() {
 			}
 		} else if (reqparsed[0] === 'kill') {
 			// commit suicide
-			if (that.config.AllowKillHomebridge===true) {
+			if (that.config.AllowKillHomebridge === true) {
 				response.end('<HEAD><meta http-equiv="refresh" content="20; url=http:/list" /></HEAD><BODY> Committed suicide. Reloading in 20 seconds.</BODY>');
-				var timerX = setTimeout(function() {
+				var timerX = setTimeout(function () {
 					throw "Commited_Suicide";
 				}, 500);
 			}
-		
+
 		} else if (reqparsed[0] === 'availservices') {
 			// list the Services that homebridge knows about
 			response.write('<HEAD><TITLE>Homebridge-MNET</TITLE></HEAD>');
@@ -335,10 +335,10 @@ MNETPlatform.prototype.configure = function() {
 			for (let srvName in globs.webdata.servData) {
 				if (globs.webdata.servData.hasOwnProperty(srvName)) {
 					let srv = globs.webdata.servData[srvName];
-					response.write('<a href="/servicedata?name='+ srvName+'">' + srv.displayName + ' (' + srv.localized.en.displayName +')</a><BR>');
+					response.write('<a href="/servicedata?name=' + srvName + '">' + srv.displayName + ' (' + srv.localized.en.displayName + ')</a><BR>');
 				}
-				
-			}  
+
+			}
 			response.write(`<HR><BR>Available pages are <br>
 			<a href="/list">list devices</a> and <br>
 			<a href="/availservices">list available services</a><br>
@@ -346,7 +346,7 @@ MNETPlatform.prototype.configure = function() {
 			`);
 			response.write('URL<BR><BR>' + request.url + '<BR>');
 			response.write(JSON.stringify(params) + '<BR>');
-			response.end('</BODY>');	
+			response.end('</BODY>');
 		} else if (reqparsed[0] === 'availcharacteristics') {
 			// list the Services that homebridge knows about
 			response.write('<HEAD><TITLE>Homebridge-MNET</TITLE></HEAD>');
@@ -355,9 +355,9 @@ MNETPlatform.prototype.configure = function() {
 			for (let chrName in globs.webdata.charData) {
 				if (globs.webdata.charData.hasOwnProperty(chrName)) {
 					let chr = globs.webdata.charData[chrName];
-					response.write('<a href="/chardata?name='+ chr.displayName+'">' + chr.displayName + '</a><BR>');
+					response.write('<a href="/chardata?name=' + chr.displayName + '">' + chr.displayName + '</a><BR>');
 				}
-			}  
+			}
 			response.write(`<HR><BR>Available pages are <br>
 					<a href="/list">list devices</a> and <br>
 					<a href="/availservices">list available services</a><br>
@@ -365,7 +365,7 @@ MNETPlatform.prototype.configure = function() {
 					`);
 			response.write('URL<BR><BR>' + request.url + '<BR>');
 			response.write(JSON.stringify(params) + '<BR>');
-			response.end('</BODY>');	
+			response.end('</BODY>');
 		} else if (reqparsed[0] === 'servicedata') {
 			// show service
 			globs.debug("list service characteristics");
@@ -374,7 +374,7 @@ MNETPlatform.prototype.configure = function() {
 			if (params.name && globs.webdata.availableServices.Services[params.name]) {
 				let service1 = globs.webdata.availableServices.Services[params.name];
 				let disp1 = globs.webdata.servData[params.name];
-				response.write('<H1>' + disp1.displayName +'</H1>');
+				response.write('<H1>' + disp1.displayName + '</H1>');
 				response.write(`<H2>Mandatory characteristics</H2>`);
 				response.write(`<H4>Mandatory characteristics are created automatically by homebridge. If they are not connected to group addresses they are dysfunct although displayed in HomeKit apps.</H4>`);
 				for (let chrName in service1.characteristics) { // service1.characteristics is a numbered array !!!
@@ -382,10 +382,10 @@ MNETPlatform.prototype.configure = function() {
 						//console.log('Searching for '+service1.characteristics[chrName].displayName);
 						//console.dir(globs.webdata.charData);
 						let chr1 = globs.webdata.charData[service1.characteristics[chrName].displayName];
-						response.write('<a href="/chardata?name='+ chr1.displayName+'">' + chr1.objectName + '</a> ('+ chr1.localized.en.displayName+ ') <BR>'); // TODO localisation
+						response.write('<a href="/chardata?name=' + chr1.displayName + '">' + chr1.objectName + '</a> (' + chr1.localized.en.displayName + ') <BR>'); // TODO localisation
 					}
-					
-				}  
+
+				}
 				response.write(`<H2>Optional characteristics</H2>`);
 				response.write(`<H4>Optional characteristics are created if listed in configuration. Any other characteristic might also work, these are thought by Apple to work best with the service</H4>`);
 				for (let chrName in service1.optionalCharacteristics) { // service1.characteristics is a numbered array !!!
@@ -393,10 +393,10 @@ MNETPlatform.prototype.configure = function() {
 						//console.log('Searching for '+service1.optionalCharacteristics[chrName].displayName);
 						//console.dir(globs.webdata.charData);
 						let chr1 = globs.webdata.charData[service1.optionalCharacteristics[chrName].displayName];
-						response.write('<a href="/chardata?name='+ chr1.displayName+'">' + chr1.objectName + '</a> ('+ chr1.localized.en.displayName+ ') <BR>');  // TODO localisation
+						response.write('<a href="/chardata?name=' + chr1.displayName + '">' + chr1.objectName + '</a> (' + chr1.localized.en.displayName + ') <BR>');  // TODO localisation
 					}
-					
-				}  
+
+				}
 			} else {
 				response.write('<H1>Error in URL</H1>');
 			}
@@ -416,26 +416,26 @@ MNETPlatform.prototype.configure = function() {
 			if (params.name && globs.webdata.charData[params.name]) {
 				let disp1 = globs.webdata.charData[params.name];
 				let char1 = globs.webdata.availableCharacteristics[disp1.objectName];
-				response.write('<H1>' + disp1.displayName +'</H1>');
+				response.write('<H1>' + disp1.displayName + '</H1>');
 				response.write(`<H2>Properties</H2>`);
 				response.write(`<H4>Properties define the behaviour of the characteristic</H4>`);
 				for (let prop in char1) { // service1.characteristics is a numbered array !!!
 					if (char1.hasOwnProperty(prop)) {
 						//console.log('Searching for '+service1.characteristics[chrName].displayName);
 						//console.dir(globs.webdata.charData);
-						if (prop!=='props') {
-							response.write(prop + ': '+ char1[prop] +' <BR>'); // TODO localisation
+						if (prop !== 'props') {
+							response.write(prop + ': ' + char1[prop] + ' <BR>'); // TODO localisation
 						} else {
 							for (let pp in char1[prop]) {
 								if (char1[prop].hasOwnProperty(pp)) {
-									response.write(pp + ': '+ char1[prop][pp] +' <BR>'); // TODO localisation
+									response.write(pp + ': ' + char1[prop][pp] + ' <BR>'); // TODO localisation
 								}
 							}
 						}
-						
+
 					}
-					
-				}  
+
+				}
 
 			} else {
 				response.write('<H1>Error in URL</H1>');
@@ -468,7 +468,7 @@ MNETPlatform.prototype.configure = function() {
 	globs.debug('BEFORE requestServer.listen');
 	if (this.config.AllowWebserver) {
 		let that = this;
-		this.requestServer.listen(that.config.WebserverPort || 18081, function() {
+		this.requestServer.listen(that.config.WebserverPort || 18081, function () {
 			console.log("Server Listening...localhost:" + that.config.WebserverPort || 18081 + "/list");
 		});
 	}
@@ -505,7 +505,7 @@ function getAccessoryByUUID(accessories, uuid) {
 /**
  * Search the globs object's devices[] array for an mnetDevice with name 'name'
  */
-globs.getDeviceByName = function(name) {
+globs.getDeviceByName = function (name) {
 	for (var idevice = 0; idevice < globs.devices.length; idevice++) {
 		var oDevice = globs.devices[idevice];
 		if (oDevice.name === name) {
