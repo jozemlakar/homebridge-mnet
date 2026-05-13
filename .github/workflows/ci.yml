@@ -20,10 +20,10 @@ jobs:
       # pnpm must exist before setup-node tries to compute its cache key,
       # so the action-setup step has to run BEFORE setup-node (not after,
       # and not via `corepack enable` only — setup-node's pnpm detection
-      # doesn't pick up corepack shims).
+      # doesn't pick up corepack shims). v4 of the action reads the
+      # version from `packageManager` in package.json — don't pass an
+      # explicit `version:` input or it complains about conflicts.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
