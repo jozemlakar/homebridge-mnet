@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Packet>
+  <Command>setResponse</Command>
+  <DatabaseManager>
+    <Mnet Group="5" Drive="OFF" />
+  </DatabaseManager>
+</Packet>

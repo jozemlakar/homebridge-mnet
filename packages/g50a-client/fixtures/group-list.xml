@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Packet>
+  <Command>getResponse</Command>
+  <DatabaseManager>
+    <ControlGroup>
+      <MnetGroupList>
+        <MnetGroupRecord Group="1" Model="IC" Address="1" />
+        <MnetGroupRecord Group="2" Model="IC" Address="2" />
+        <MnetGroupRecord Group="3" Model="IC" Address="3" />
+        <MnetGroupRecord Group="4" Model="IC" Address="4" />
+        <MnetGroupRecord Group="5" Model="IC" Address="5" />
+      </MnetGroupList>
+    </ControlGroup>
+  </DatabaseManager>
+</Packet>

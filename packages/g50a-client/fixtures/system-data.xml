@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Packet>
+  <Command>getResponse</Command>
+  <DatabaseManager>
+    <SystemData Model="G-50BA" Version="3.22" MacAddress="0011223344AA" TempUnit="C" IPAdrsLan="192.168.1.1" LocationID="000000" />
+  </DatabaseManager>
+</Packet>

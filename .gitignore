@@ -1,3 +1,27 @@
-# Dependency directories
+# Dependencies
 node_modules/
+
+# Build output
+dist/
+dist-pack/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor
 .vscode/
+.idea/
+.DS_Store
+.claude/
+
+# Test
+coverage/
+.vitest-cache/
+
+# Local env / personal notes
+.env
+.env.local
+.local/

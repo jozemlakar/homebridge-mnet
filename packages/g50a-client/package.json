@@ -1,0 +1,54 @@
+{
+  "name": "g50a-client",
+  "version": "0.1.0",
+  "description": "Framework-free Node.js client for Mitsubishi Electric G-50A / GB-50A centralized AC controllers (M-NET / MELANS XML over HTTP).",
+  "keywords": [
+    "mitsubishi",
+    "g-50a",
+    "gb-50a",
+    "m-net",
+    "melans",
+    "hvac",
+    "air-conditioner"
+  ],
+  "author": "Joze Mlakar <Joze.Mlakar@ixtlan-team.si>",
+  "license": "ISC",
+  "homepage": "https://github.com/jozemlakar/homebridge-mnet#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jozemlakar/homebridge-mnet.git",
+    "directory": "packages/g50a-client"
+  },
+  "bugs": {
+    "url": "https://github.com/jozemlakar/homebridge-mnet/issues"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "g50a": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": "^22.10.0 || ^24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "lint": "eslint src test",
+    "clean": "rm -rf dist .tsbuildinfo"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.1",
+    "undici": "^7.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

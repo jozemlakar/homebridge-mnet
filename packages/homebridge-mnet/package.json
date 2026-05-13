@@ -1,0 +1,56 @@
+{
+  "name": "homebridge-mnet",
+  "displayName": "M-NET (Mitsubishi G-50A / GB-50A)",
+  "version": "2.0.1",
+  "description": "Homebridge plugin that bridges Mitsubishi Electric M-NET centralized AC controllers (G-50A / GB-50A) to Apple HomeKit.",
+  "keywords": [
+    "homebridge-plugin",
+    "homebridge",
+    "homekit",
+    "mitsubishi",
+    "g-50a",
+    "gb-50a",
+    "m-net",
+    "melans",
+    "air-conditioner",
+    "hvac"
+  ],
+  "author": "Joze Mlakar <Joze.Mlakar@ixtlan-team.si>",
+  "license": "ISC",
+  "homepage": "https://github.com/jozemlakar/homebridge-mnet#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jozemlakar/homebridge-mnet.git",
+    "directory": "packages/homebridge-mnet"
+  },
+  "bugs": {
+    "url": "https://github.com/jozemlakar/homebridge-mnet/issues"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "config.schema.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": "^22.10.0 || ^24.0.0",
+    "homebridge": "^1.8.0 || ^2.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src test",
+    "clean": "rm -rf dist .tsbuildinfo"
+  },
+  "dependencies": {
+    "g50a-client": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "hap-nodejs": "^1.0.5",
+    "homebridge": "^1.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

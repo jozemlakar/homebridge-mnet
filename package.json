@@ -1,29 +1,28 @@
 {
-	"name": "homebridge-mnet",
-	"version": "1.0.0",
-	"description": "homebridge shim for M-Net home automation.",
-	"main": "index.js",
-	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1",
-		"start": "echo \"Error: configure and run homebridge to start\" && exit 1"
-	},
-	"engines": {
-		"node": ">7.0.0",
-		"homebridge": ">=0.4.42"
-	},
-	"keywords": [
-		"homebridge-plugin",
-		"homebridge",
-		"MNET",
-		"mnet",
-		"M-Net",
-		"Siri"
-	],
-	"dependencies": {
-		"deep-diff": "^1.0.2",
-		"homebridge": "^1.10.0",
-		"xml2js": "^0.5.0"
-	},
-	"author": "Joze Mlakar <Joze.Mlakar@ixtlan-team.si> (http://www.ixtlan-team.si)",
-	"license": "ISC"
+  "name": "homebridge-mnet-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace root for homebridge-mnet v2 and the g50a-client protocol library.",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": "^22.10.0 || ^24.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "eslint packages",
+    "format": "prettier --write \"packages/**/*.{ts,json,md}\"",
+    "clean": "pnpm -r exec rm -rf dist .tsbuildinfo"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
 }

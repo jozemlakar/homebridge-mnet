@@ -1,0 +1,131 @@
+{
+  "pluginAlias": "MNET",
+  "pluginType": "platform",
+  "singular": true,
+  "strictValidation": false,
+  "headerDisplay": "Bridges a Mitsubishi Electric M-NET centralized AC controller (G-50A / GB-50A) to Apple HomeKit. Each indoor unit appears as a HomeKit HeaterCooler accessory.",
+  "footerDisplay": "See [project README](https://github.com/jozemlakar/homebridge-mnet#readme) for the protocol details and supported controllers.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "description": "Displayed in the Homebridge logs. Not visible in HomeKit.",
+        "type": "string",
+        "default": "M-NET",
+        "required": true
+      },
+      "host": {
+        "title": "Controller IP or hostname",
+        "description": "Reachable address of the G-50A / GB-50A controller.",
+        "type": "string",
+        "format": "hostname",
+        "required": true,
+        "placeholder": "192.168.1.1"
+      },
+      "port": {
+        "title": "HTTP port",
+        "description": "Almost always 80. Change only if the controller sits behind a reverse proxy.",
+        "type": "integer",
+        "default": 80,
+        "minimum": 1,
+        "maximum": 65535
+      },
+      "pollIntervalMs": {
+        "title": "Poll interval (ms)",
+        "description": "How often to read state from the controller. Lower = snappier HomeKit reflection, higher = lighter load.",
+        "type": "integer",
+        "default": 5000,
+        "minimum": 2000,
+        "maximum": 60000
+      },
+      "autoModeDeadbandC": {
+        "title": "AUTO-mode deadband (°C)",
+        "description": "The controller has one SetTemp per unit; HomeKit's AUTO mode wants two thresholds. We bracket the controller's setpoint by ±half this value.",
+        "type": "number",
+        "default": 2.0,
+        "minimum": 0.5,
+        "maximum": 5.0,
+        "multipleOf": 0.5
+      },
+      "groupNames": {
+        "title": "Group display names",
+        "description": "Optional per-group display-name overrides. Without any entries here, accessories appear as \"M-NET Group N\".",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "group": {
+              "title": "Group number",
+              "description": "Group as registered on the controller (1-50).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "required": true
+            },
+            "name": {
+              "title": "Display name",
+              "description": "Name shown in HomeKit, e.g. \"Living Room\".",
+              "type": "string",
+              "required": true
+            }
+          }
+        }
+      },
+      "excludeGroups": {
+        "title": "Excluded groups",
+        "description": "Group numbers to hide from HomeKit (e.g. a test unit).",
+        "type": "array",
+        "items": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "uniqueItems": true
+      }
+    }
+  },
+  "layout": [
+    "host",
+    "name",
+    {
+      "type": "section",
+      "title": "Advanced",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        { "key": "port", "type": "number" },
+        { "key": "pollIntervalMs", "type": "number" },
+        { "key": "autoModeDeadbandC", "type": "number" },
+        {
+          "key": "groupNames",
+          "type": "array",
+          "orderable": false,
+          "buttonText": "Add group name",
+          "items": [
+            {
+              "type": "section",
+              "htmlClass": "row",
+              "items": [
+                {
+                  "key": "groupNames[].group",
+                  "type": "number",
+                  "flex": "1 1 30%",
+                  "htmlClass": "col-xs-4"
+                },
+                {
+                  "key": "groupNames[].name",
+                  "flex": "1 1 70%",
+                  "htmlClass": "col-xs-8"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "key": "excludeGroups",
+          "type": "array",
+          "orderable": false,
+          "buttonText": "Exclude a group",
+          "items": [{ "key": "excludeGroups[]", "type": "number" }]
+        }
+      ]
+    }
+  ]
+}

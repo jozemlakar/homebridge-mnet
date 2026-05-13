@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Packet>
+  <Command>setErrorResponse</Command>
+  <DatabaseManager>
+    <ControlGroup>
+      <MnetList>
+        <MnetRecord Group="5" GroupNameWeb="this string is far too long to be accepted by the controller" />
+      </MnetList>
+      <ERROR Point="GroupNameWeb[this string is far too long to be accepted by the controller]" Code="0201" Message="Invalid Value" />
+    </ControlGroup>
+  </DatabaseManager>
+</Packet>
