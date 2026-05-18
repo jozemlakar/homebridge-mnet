@@ -441,7 +441,9 @@ A minimal EW-50E-compatible write looks like:
 
 ## 6b. Operation Prohibit — IC wall-remote lockout
 
-Independent of `Schedule="ON"` arming. When the IC's prohibit flag is set, the unit's local wall remote displays "centrally controlled" and refuses user input for the locked attributes. **Cannot be written as an XML attribute on `<Mnet>`** — the controller rejects `Prohibit`, `ProhibitDrive`, `Lock` etc. with `<ERROR Point="..." Code="0101" Message="Unknown Attribute"/>`. Must be sent as a raw M-NET frame via `<MnetRouter>` (§8c.1).
+> **Status (2026-05-18)**: the **wire format below is empirically verified**, but the **trigger mechanism is not fully understood**. Earlier confident claims in this section about `SystemData.Prohibit` policy and ON-only schedules causing locks were retracted — see §6b.5 below.
+
+When the IC's prohibit flag is set, the unit's local wall remote displays "centrally controlled" and refuses user input for the locked attributes. **Cannot be written as an XML attribute on `<Mnet>`** — the controller rejects `Prohibit`, `ProhibitDrive`, `Lock` etc. with `<ERROR Point="..." Code="0101" Message="Unknown Attribute"/>`. Must be sent as a raw M-NET frame via `<MnetRouter>` (§8c.1).
 
 ### Wire format (`OperationProhibitionSet`, command class `0D0B`)
 
@@ -467,16 +469,22 @@ Prohibit OnOff only, 60s timeout: 0D0B000301003C   →   reply 0D8B00
 
 Reply pattern `0D 8B <status>` — `8B` is `0x0B | 0x80` (response marker), `<status>=00` means OK.
 
+### Reading current state (`OperationProhibitionMonitor`, command `2D0B`)
+
+Send `2D0B` (no payload) via `MnetRouter` to an IC. Reply is `2D8B…`. The prohibit bitmap is at **OP[3]** — i.e. byte index 5 of the response frame (after the 2-byte command header `2D 8B` and 3 bytes of `OP[0..2]`). `0x00` = no prohibits set; non-zero = same bitmap layout as the set command.
+
+This is the **authoritative read** for the IC's actual state, not the bulk byte. Use it for diagnostics.
+
 ### G-50A's cache vs IC reality
 
-The G-50A maintains a per-group prohibit shadow in its `<Mnet Bulk>` payload (byte index 10 in the legacy 48-byte layout). **The shadow does not update when `OperationProhibitionSet` is sent through `MnetRouter`** because the frame bypasses the controller's cache write-path. The IC's actual lock state is what the wall remote honors, so a manual `0D0B0002000000` is effective even if the bulk poll continues to show `01`. The shadow refreshes on subsequent controller-initiated operations.
+The G-50A maintains a per-group prohibit shadow in its `<Mnet Bulk>` payload (byte index 10 in the legacy 48-byte layout). **The shadow does not update when `OperationProhibitionSet` is sent through `MnetRouter`** because the frame bypasses the controller's cache write-path. The IC's actual lock state is what the wall remote honors, so a manual `0D0B0002000000` is effective even if the bulk poll continues to show `01`. **Treat bulk byte 10 as a lying cache** — always cross-check with `2D0B`.
 
 ### Controller-wide policy: `SystemData.Prohibit`
 
-Two values seen in production:
+Two values observed in production:
 
-- `SC_ALL` — "Schedule Control All". When any scheduled event fires, the controller auto-pushes a prohibit to the IC. Future schedule events keep re-engaging the lock.
-- `RC_ONLY` — "Remote Controller Only". Schedule events drive the unit but leave the IC's prohibit flag untouched.
+- `SC_ALL` — labelled "SC/RC" in the G-50A web UI under "Range of Prohibited Controllers"
+- `RC_ONLY` — labelled "RC only" in the same UI
 
 Both writable via:
 
@@ -484,7 +492,31 @@ Both writable via:
 <DatabaseManager><SystemData Prohibit="RC_ONLY" /></DatabaseManager>
 ```
 
-After flipping from `SC_ALL` to `RC_ONLY`, existing IC locks **persist** — the controller doesn't issue release frames automatically. Clear each affected IC with `0D0B0002000000` once.
+> **What this setting does NOT do (correction, 2026-05-18)**: previous wording here claimed `RC_ONLY` prevents the controller from re-pushing prohibit when a schedule fires. **Empirically untrue**. After flipping a controller from `SC_ALL` to `RC_ONLY` and clearing all per-IC locks, the locks reappeared anyway within hours. Meanwhile a third controller with the same `RC_ONLY` setting never showed locks. So the setting alone does not explain the difference — see §6b.5.
+
+### 6b.5 What we still don't know about the trigger
+
+(Notes from live testing 2026-05-18; recorded to keep future readers from making the same wrong assumption I did.)
+
+On three side-by-side G-50BA / EW-50E controllers all set to `RC_ONLY`:
+
+| Controller | Schedules present | Original schedule shape | Lock observed |
+|---|---|---|---|
+| :80 | Yes (long-standing) | Originally `ON` event + **mute** events at 17:00 + 20:00. After cleanup: only `ON`. | No locks before cleanup; locks appeared after cleanup. |
+| :81 | Yes (added this session) | Only `ON` event, no closing events. | Locks appeared after we authored schedules; controller had no schedules before. |
+| :82 | Yes (long-standing) | Paired `ON` + `OFF` events on the same day (e.g. `06:00 ON` + `17:00 OFF`). | No locks ever. |
+
+Heuristic that fits all three observations: **the schedule engine appears to assert central control once it fires an event and never releases until it fires another event** — *any* subsequent event, even a mute one. :82 closes the day with `Drive=OFF`, :80-original closed it with two mute events; both release the assertion. Our authored schedules on :81 (and on :80 after cleanup) have no second event, so the assertion stays asserted.
+
+This is a working hypothesis, not confirmed. To confirm we'd need to author a mute event at, say, 17:00 on one currently-locking group, watch whether the lock stops reappearing.
+
+Practical remediation that's known to work for hours at a time:
+
+```bash
+g50a clear-prohibit --host <controller> --port <P>   # clears all IC locks
+```
+
+Re-run when locks reappear. No durable fix verified yet.
 
 ### Legacy command variant (`OperationProhibition`, class `0D24`)
 
