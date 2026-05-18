@@ -439,6 +439,63 @@ A minimal EW-50E-compatible write looks like:
 
 **Verified end-to-end on G-50BA fw 3.33** (2026-05-12): the corresponding `setRequest` is accepted and a follow-up `getRequest` returns the same records. All 7 day-of-week patterns can be batched in a single `setRequest` by emitting multiple `<WPatternList>` children with different `Pattern` values inside one `<ScheduleControl>`. **Replace semantics**: the records inside a `<WPatternList>` write replace the entire day's pattern — there is no partial-update; if you write 1 record for a day, any others previously stored for that day are deleted.
 
+## 6b. Operation Prohibit — IC wall-remote lockout
+
+Independent of `Schedule="ON"` arming. When the IC's prohibit flag is set, the unit's local wall remote displays "centrally controlled" and refuses user input for the locked attributes. **Cannot be written as an XML attribute on `<Mnet>`** — the controller rejects `Prohibit`, `ProhibitDrive`, `Lock` etc. with `<ERROR Point="..." Code="0101" Message="Unknown Attribute"/>`. Must be sent as a raw M-NET frame via `<MnetRouter>` (§8c.1).
+
+### Wire format (`OperationProhibitionSet`, command class `0D0B`)
+
+```
+0D 0B 00 <mode> <bitmap> <duration-hi> <duration-lo>
+```
+
+| Byte(s) | Meaning |
+|---|---|
+| `0D 0B` | command class |
+| `00` | reserved / padding |
+| `<mode>` | `02` = release, `03` = prohibit |
+| `<bitmap>` | 8-bit prohibit selector — `bit 0`=OnOff, `1`=Mode, `2`=SetTemp, `5`=Timer, `6`=FanSpeed, `7`=AirDirection. Bits 3+4 reserved. |
+| `<duration>` | 16-bit big-endian seconds. `0000` = permanent. |
+
+**Worked examples** (verified live, 2026-05-15, G-50BA fw 3.33):
+
+```
+Release every flag, permanent:    0D0B0002000000   →   reply 0D8B00
+Prohibit every flag, permanent:   0D0B0003E70000   →   reply 0D8B00
+Prohibit OnOff only, 60s timeout: 0D0B000301003C   →   reply 0D8B00
+```
+
+Reply pattern `0D 8B <status>` — `8B` is `0x0B | 0x80` (response marker), `<status>=00` means OK.
+
+### G-50A's cache vs IC reality
+
+The G-50A maintains a per-group prohibit shadow in its `<Mnet Bulk>` payload (byte index 10 in the legacy 48-byte layout). **The shadow does not update when `OperationProhibitionSet` is sent through `MnetRouter`** because the frame bypasses the controller's cache write-path. The IC's actual lock state is what the wall remote honors, so a manual `0D0B0002000000` is effective even if the bulk poll continues to show `01`. The shadow refreshes on subsequent controller-initiated operations.
+
+### Controller-wide policy: `SystemData.Prohibit`
+
+Two values seen in production:
+
+- `SC_ALL` — "Schedule Control All". When any scheduled event fires, the controller auto-pushes a prohibit to the IC. Future schedule events keep re-engaging the lock.
+- `RC_ONLY` — "Remote Controller Only". Schedule events drive the unit but leave the IC's prohibit flag untouched.
+
+Both writable via:
+
+```xml
+<DatabaseManager><SystemData Prohibit="RC_ONLY" /></DatabaseManager>
+```
+
+After flipping from `SC_ALL` to `RC_ONLY`, existing IC locks **persist** — the controller doesn't issue release frames automatically. Clear each affected IC with `0D0B0002000000` once.
+
+### Legacy command variant (`OperationProhibition`, class `0D24`)
+
+Older AE/G-50 generations used a different encoding:
+
+```
+0D 24 <onOff:2> <mode:2> <setTemp:2> <timer:2> <fanSpeed:2> <airDir:2> 00000000
+```
+
+Each 2-char hex slot: `00`=no change, `10`=release, `11`=prohibit. Total payload truncated to 20 chars before the trailing 8 zeros. **G-50BA fw 3.33 rejects this with reply `0DA4FF`** — the `0D0B` form is what's live on current hardware.
+
 ## 7. SystemData (controller-wide configuration)
 
 `g50/apl/SystemData` — top-level controller settings. Read/written via:

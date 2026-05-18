@@ -268,6 +268,27 @@ export interface MnetRawReply {
   reply: string;
 }
 
+/**
+ * Per-IC operation-prohibit lock. Each flag, when `true`, instructs the unit's
+ * local wall remote to display "centrally controlled" and refuse user input
+ * for that attribute. Set all flags `false` (or call `clearProhibit`) to
+ * release the lock entirely.
+ *
+ * Maps to bits 0/1/2/5/6/7 of the unit's status byte; bits 3+4 are reserved.
+ * Wire-level command class is `0D0B` — see protocol-doc §6b.
+ */
+export interface ProhibitFlags {
+  onOff?: boolean;
+  mode?: boolean;
+  setTemp?: boolean;
+  /** Local timer-set lockout (rarely useful from XML callers). */
+  timer?: boolean;
+  /** Fan-speed lockout. */
+  fanSpeed?: boolean;
+  /** Air-direction / louver lockout. */
+  airDirection?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Schedules (ScheduleControl subsystem — weekly patterns)
 // ---------------------------------------------------------------------------

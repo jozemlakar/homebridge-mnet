@@ -270,3 +270,92 @@ describe('G50AClient — MnetRouter raw frames', () => {
     await client.stop();
   });
 });
+
+describe('G50AClient — prohibit lock control', () => {
+  function makeProhibitTransport(): {
+    transport: Transport;
+    sentFrames: string[];
+  } {
+    const sentFrames: string[] = [];
+    const transport = {
+      async send(body: string) {
+        if (body.includes('MnetGroupList')) {
+          return parsePacket(`<?xml version="1.0" encoding="UTF-8"?>
+<Packet><Command>getResponse</Command><DatabaseManager><ControlGroup><MnetGroupList>
+  <MnetGroupRecord Group="1" Model="IC" Address="11" />
+  <MnetGroupRecord Group="5" Model="IC" Address="55" />
+</MnetGroupList></ControlGroup></DatabaseManager></Packet>`);
+        }
+        if (body.includes('SystemData')) {
+          return parsePacket(`<?xml version="1.0" encoding="UTF-8"?>
+<Packet><Command>getResponse</Command><DatabaseManager>
+<SystemData Model="G-50A" Version="3.33" MacAddress="000000000000" TempUnit="C" />
+</DatabaseManager></Packet>`);
+        }
+        if (body.includes('Bulk=')) {
+          return parsePacket(`<?xml version="1.0" encoding="UTF-8"?>
+<Packet><Command>getResponse</Command><DatabaseManager>
+<Mnet Group="1" Bulk="01000118000064040301000000000000001F0100640101010003010100" />
+<Mnet Group="5" Bulk="01000118000064040301000000000000001F0100640101010003010100" />
+</DatabaseManager></Packet>`);
+        }
+        if (body.includes('MnetRouter')) {
+          // Capture the request frame and ACK with success.
+          const da = /DA="(\d+)"/.exec(body)?.[1] ?? '?';
+          const frame = /Data="([^"]+)"/.exec(body)?.[1] ?? '';
+          sentFrames.push(`${da}:${frame}`);
+          return parsePacket(`<?xml version="1.0" encoding="UTF-8"?>
+<Packet><Command>setResponse</Command><DatabaseManager><MnetRouter>
+  <MnetCommandList DA="${da}" CommandInterval="400">
+    <MnetCommandRecord Data="${frame}" RcvData="0D8B00" />
+  </MnetCommandList>
+</MnetRouter></DatabaseManager></Packet>`);
+        }
+        return parsePacket(`<Packet><Command>setResponse</Command></Packet>`);
+      },
+      async close() {},
+    } as unknown as Transport;
+    return { transport, sentFrames };
+  }
+
+  it('clearProhibit sends 0D0B0002000000 to the group\'s M-NET address', async () => {
+    const { transport, sentFrames } = makeProhibitTransport();
+    const client = new G50AClient({ host: '127.0.0.1' }, transport);
+    await client.start();
+    await client.clearProhibit(5);
+    expect(sentFrames).toContain('55:0D0B0002000000');
+    await client.stop();
+  });
+
+  it('setProhibit packs the right bitmap + mode byte', async () => {
+    const { transport, sentFrames } = makeProhibitTransport();
+    const client = new G50AClient({ host: '127.0.0.1' }, transport);
+    await client.start();
+    await client.setProhibit(1, { onOff: true, setTemp: true });
+    // bitmap: onOff=0x01 | setTemp=0x04 = 0x05; mode=0x03 (prohibit)
+    expect(sentFrames).toContain('11:0D0B0003050000');
+    await client.stop();
+  });
+
+  it('setProhibit with all-true and a duration encodes correctly', async () => {
+    const { transport, sentFrames } = makeProhibitTransport();
+    const client = new G50AClient({ host: '127.0.0.1' }, transport);
+    await client.start();
+    await client.setProhibit(
+      1,
+      { onOff: true, mode: true, setTemp: true, timer: true, fanSpeed: true, airDirection: true },
+      { durationSeconds: 60 },
+    );
+    // bitmap E7, mode 03, duration 003C
+    expect(sentFrames).toContain('11:0D0B0003E7003C');
+    await client.stop();
+  });
+
+  it('clearProhibit rejects unknown groups', async () => {
+    const { transport } = makeProhibitTransport();
+    const client = new G50AClient({ host: '127.0.0.1' }, transport);
+    await client.start();
+    await expect(client.clearProhibit(99)).rejects.toThrow(/Unknown group 99/);
+    await client.stop();
+  });
+});

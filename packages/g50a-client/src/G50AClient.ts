@@ -26,6 +26,7 @@ import type {
   MnetName,
   MnetRawCommand,
   MnetRawReply,
+  ProhibitFlags,
   RefSystemRecord,
   ScheduleEvent,
   StateChangeEvent,
@@ -683,6 +684,71 @@ export class G50AClient extends EventEmitter {
       bytes[i] = Number.parseInt(payloadHex.slice(i * 2, i * 2 + 2), 16);
     }
     return bytes;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Operation prohibit (IC wall-remote lockout)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Set or release the IC's per-attribute "centrally controlled" lockout. The
+   * lockout shows on the unit's local wall remote and refuses user input for
+   * the locked attributes (drive / mode / setpoint / fan / louver / timer).
+   *
+   * Pass all flags `false` to release the lock entirely (prefer
+   * {@link clearProhibit} for that case). Pass any flag `true` to lock that
+   * attribute. `durationSeconds` schedules an automatic release after the
+   * given time; `0` (default) means "permanent until cleared".
+   *
+   * Implementation: wraps the raw M-NET `OperationProhibitionSet` (`0D0B`)
+   * frame and sends it via {@link sendMnetRaw}. The reply pattern is
+   * `0D8B00` on success.
+   */
+  async setProhibit(
+    group: number,
+    flags: ProhibitFlags,
+    options: { durationSeconds?: number } = {},
+  ): Promise<void> {
+    const addr = this.requireGroupAddress(group);
+    const bitmap =
+      (flags.onOff ? 0x01 : 0) |
+      (flags.mode ? 0x02 : 0) |
+      (flags.setTemp ? 0x04 : 0) |
+      (flags.timer ? 0x20 : 0) |
+      (flags.fanSpeed ? 0x40 : 0) |
+      (flags.airDirection ? 0x80 : 0);
+    const anyLock = bitmap !== 0;
+    const modeByte = anyLock ? 0x03 : 0x02;
+    const duration = anyLock ? (options.durationSeconds ?? 0) : 0;
+    if (duration < 0 || duration > 0xffff) {
+      throw new RangeError(`durationSeconds must be 0..65535, got ${duration}`);
+    }
+    const hex =
+      '0D0B00' +
+      modeByte.toString(16).toUpperCase().padStart(2, '0') +
+      bitmap.toString(16).toUpperCase().padStart(2, '0') +
+      duration.toString(16).toUpperCase().padStart(4, '0');
+    const [reply] = await this.sendMnetRaw(addr, [hex]);
+    if (!reply?.reply || !reply.reply.toUpperCase().endsWith('00')) {
+      throw new ProtocolError(
+        `setProhibit(group ${group}, addr ${addr}) — unexpected reply: ${reply?.reply || '(no reply)'}`,
+        [],
+      );
+    }
+  }
+
+  /**
+   * Convenience: clear every prohibit flag on this group. Equivalent to
+   * `setProhibit(group, {})`. Idempotent — safe to call on already-clear ICs.
+   */
+  async clearProhibit(group: number): Promise<void> {
+    await this.setProhibit(group, {});
+  }
+
+  private requireGroupAddress(group: number): number {
+    const info = this.groups.get(group);
+    if (!info) throw new RangeError(`Unknown group ${group} — not in the current group list`);
+    return info.address ?? group;
   }
 
   // ---------------------------------------------------------------------------

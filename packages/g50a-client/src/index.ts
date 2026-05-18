@@ -45,6 +45,7 @@ export type {
   MnetRawReply,
   Mode,
   OutdoorSystem,
+  ProhibitFlags,
   RefSystemRecord,
   ScheduleEvent,
   StateChangeEvent,

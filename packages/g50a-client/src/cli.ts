@@ -124,6 +124,7 @@ function usage(): void {
       '  g50a time-sync  --host <h> [--port P] [--dry-run]    # write Mac local time to controller',
       '  g50a mnet-raw   --host <h> [--port P] --da N [--interval-ms 400] <hex> [<hex>...]',
       '  g50a mnet-bank  --host <h> [--port P] --da N --bank 0x80',
+      '  g50a clear-prohibit --host <h> [--port P] [--group N]',
       '',
       'state    — print current state of every group',
       'dump     — read weekly schedule(s) and emit JSON (all groups by default)',
@@ -139,6 +140,8 @@ function usage(): void {
       '            (e.g. `g50a mnet-raw --host 1.2.3.4 --da 66 397EF0 397EF1 3112`)',
       'mnet-bank — read one 16-byte memory bank from a unit',
       '            (e.g. `g50a mnet-bank --host 1.2.3.4 --da 66 --bank 0x80`)',
+      'clear-prohibit — release the "centrally controlled" lock on a group, or',
+      '            on every group if --group is omitted',
       '',
       'Schedules cover MnetGroupRecord Model="IC" units only. The JSON shape is',
       'the WeeklySchedule type exported by g50a-client.',
@@ -475,6 +478,30 @@ async function cmdMnetRaw(flags: Flags): Promise<void> {
   });
 }
 
+async function cmdClearProhibit(flags: Flags): Promise<void> {
+  await withClient(flags, async (client) => {
+    if (flags.group !== undefined && Number.isFinite(flags.group)) {
+      await client.clearProhibit(flags.group);
+      process.stdout.write(`group ${flags.group}: prohibit cleared\n`);
+      return;
+    }
+    // No --group → clear every IC group on the controller.
+    const groups = client.getGroups();
+    let ok = 0, err = 0;
+    for (const g of groups) {
+      try {
+        await client.clearProhibit(g.group);
+        ok++;
+        process.stdout.write(`  g${g.group} ✓\n`);
+      } catch (e) {
+        err++;
+        process.stdout.write(`  g${g.group} ✗ ${e instanceof Error ? e.message : String(e)}\n`);
+      }
+    }
+    process.stdout.write(`cleared=${ok} errors=${err}\n`);
+  });
+}
+
 async function cmdMnetBank(flags: Flags): Promise<void> {
   if (flags.da === undefined || !Number.isFinite(flags.da)) {
     process.stderr.write('Error: mnet-bank requires --da <address>\n');
@@ -538,6 +565,9 @@ async function main(): Promise<void> {
       break;
     case 'mnet-bank':
       await cmdMnetBank(flags);
+      break;
+    case 'clear-prohibit':
+      await cmdClearProhibit(flags);
       break;
     case undefined:
     case 'help':
