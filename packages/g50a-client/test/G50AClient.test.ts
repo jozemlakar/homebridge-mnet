@@ -318,12 +318,14 @@ describe('G50AClient — prohibit lock control', () => {
     return { transport, sentFrames };
   }
 
-  it('clearProhibit sends 0D0B0002000000 to the group\'s M-NET address', async () => {
+  it('clearProhibit sends 0D0B0002E70000 (mode=release, all-bits bitmap)', async () => {
+    // The IC interprets bitmap=0 as "release nothing" — you have to set the
+    // bits for the attributes you want to release. 0xE7 = all 6 valid bits.
     const { transport, sentFrames } = makeProhibitTransport();
     const client = new G50AClient({ host: '127.0.0.1' }, transport);
     await client.start();
     await client.clearProhibit(5);
-    expect(sentFrames).toContain('55:0D0B0002000000');
+    expect(sentFrames).toContain('55:0D0B0002E70000');
     await client.stop();
   });
 

@@ -11,6 +11,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { G50AClient } from './G50AClient.js';
 import { renderScheduleReport, type NameLookup } from './report.js';
+import { emptyWeeklySchedule } from './schedule.js';
 import type { WeeklySchedule } from './types.js';
 
 interface Flags {
@@ -125,6 +126,7 @@ function usage(): void {
       '  g50a mnet-raw   --host <h> [--port P] --da N [--interval-ms 400] <hex> [<hex>...]',
       '  g50a mnet-bank  --host <h> [--port P] --da N --bank 0x80',
       '  g50a clear-prohibit --host <h> [--port P] [--group N]',
+      '  g50a clear-schedule --host <h> [--port P] [--group N]',
       '',
       'state    — print current state of every group',
       'dump     — read weekly schedule(s) and emit JSON (all groups by default)',
@@ -142,6 +144,8 @@ function usage(): void {
       '            (e.g. `g50a mnet-bank --host 1.2.3.4 --da 66 --bank 0x80`)',
       'clear-prohibit — release the "centrally controlled" lock on a group, or',
       '            on every group if --group is omitted',
+      'clear-schedule — write an empty 7-day weekly schedule for a group (or every',
+      '            group if --group is omitted). Use `dump` first to back up.',
       '',
       'Schedules cover MnetGroupRecord Model="IC" units only. The JSON shape is',
       'the WeeklySchedule type exported by g50a-client.',
@@ -478,6 +482,28 @@ async function cmdMnetRaw(flags: Flags): Promise<void> {
   });
 }
 
+async function cmdClearSchedule(flags: Flags): Promise<void> {
+  await withClient(flags, async (client) => {
+    const groups =
+      flags.group !== undefined && Number.isFinite(flags.group)
+        ? [{ group: flags.group }]
+        : client.getGroups();
+    let ok = 0,
+      err = 0;
+    for (const g of groups) {
+      try {
+        await client.setWeeklySchedule(emptyWeeklySchedule(g.group));
+        ok++;
+        process.stdout.write(`  g${g.group} schedule emptied ✓\n`);
+      } catch (e) {
+        err++;
+        process.stdout.write(`  g${g.group} ✗ ${e instanceof Error ? e.message : String(e)}\n`);
+      }
+    }
+    process.stdout.write(`emptied=${ok} errors=${err}\n`);
+  });
+}
+
 async function cmdClearProhibit(flags: Flags): Promise<void> {
   await withClient(flags, async (client) => {
     if (flags.group !== undefined && Number.isFinite(flags.group)) {
@@ -568,6 +594,9 @@ async function main(): Promise<void> {
       break;
     case 'clear-prohibit':
       await cmdClearProhibit(flags);
+      break;
+    case 'clear-schedule':
+      await cmdClearSchedule(flags);
       break;
     case undefined:
     case 'help':

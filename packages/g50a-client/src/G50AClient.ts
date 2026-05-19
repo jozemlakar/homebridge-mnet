@@ -718,7 +718,14 @@ export class G50AClient extends EventEmitter {
       (flags.fanSpeed ? 0x40 : 0) |
       (flags.airDirection ? 0x80 : 0);
     const anyLock = bitmap !== 0;
+    // Wire convention (verified live, 2026-05-19, G-50BA fw 3.33 + EW-50E fw 7.70):
+    // - mode 0x02 = release, mode 0x03 = prohibit
+    // - bitmap = WHICH attributes the command applies to (NOT "which should be locked")
+    // - For release-all, mode=0x02 + bitmap=0xE7 (all 6 valid attribute bits set)
+    // - mode=0x02 + bitmap=0x00 is accepted by the IC but is a no-op (release-nothing)
+    // The MainteToolNetLibrary helper had the same off-by-meaning bug; do not replicate it.
     const modeByte = anyLock ? 0x03 : 0x02;
+    const wireBitmap = anyLock ? bitmap : 0xe7;
     const duration = anyLock ? (options.durationSeconds ?? 0) : 0;
     if (duration < 0 || duration > 0xffff) {
       throw new RangeError(`durationSeconds must be 0..65535, got ${duration}`);
@@ -726,7 +733,7 @@ export class G50AClient extends EventEmitter {
     const hex =
       '0D0B00' +
       modeByte.toString(16).toUpperCase().padStart(2, '0') +
-      bitmap.toString(16).toUpperCase().padStart(2, '0') +
+      wireBitmap.toString(16).toUpperCase().padStart(2, '0') +
       duration.toString(16).toUpperCase().padStart(4, '0');
     const [reply] = await this.sendMnetRaw(addr, [hex]);
     if (!reply?.reply || !reply.reply.toUpperCase().endsWith('00')) {
@@ -740,9 +747,40 @@ export class G50AClient extends EventEmitter {
   /**
    * Convenience: clear every prohibit flag on this group. Equivalent to
    * `setProhibit(group, {})`. Idempotent — safe to call on already-clear ICs.
+   *
+   * Sends the wire frame `0D0B0002E70000` (mode=release, bitmap=all-6-bits,
+   * duration=0). The `0xE7` bitmap selects all 6 valid attribute bits — without
+   * it the controller treats the command as "release nothing".
    */
   async clearProhibit(group: number): Promise<void> {
     await this.setProhibit(group, {});
+  }
+
+  /**
+   * Read the IC's current prohibit-bitmap directly via the `2D0B` monitor
+   * frame. This is the authoritative state — independent of the G-50A's
+   * lying bulk-poll byte 10. Returns `null` if the IC didn't respond.
+   *
+   * The reply frame is `2D 8B <addr-echo> <static> <bitmap>` (variable
+   * length); the bitmap byte uses the same bit layout as
+   * {@link setProhibit} (bit 0=OnOff, 1=Mode, 2=SetTemp, 5=Timer, 6=Fan,
+   * 7=AirDirection).
+   */
+  async readProhibit(group: number): Promise<ProhibitFlags | null> {
+    const addr = this.requireGroupAddress(group);
+    const [reply] = await this.sendMnetRaw(addr, ['2D0B']);
+    if (!reply?.reply || reply.reply.length < 10) return null;
+    // bitmap is at hex offset 8..10 (frame byte 4)
+    const bitmap = parseInt(reply.reply.slice(8, 10), 16);
+    if (!Number.isFinite(bitmap)) return null;
+    return {
+      onOff: (bitmap & 0x01) !== 0,
+      mode: (bitmap & 0x02) !== 0,
+      setTemp: (bitmap & 0x04) !== 0,
+      timer: (bitmap & 0x20) !== 0,
+      fanSpeed: (bitmap & 0x40) !== 0,
+      airDirection: (bitmap & 0x80) !== 0,
+    };
   }
 
   private requireGroupAddress(group: number): number {
