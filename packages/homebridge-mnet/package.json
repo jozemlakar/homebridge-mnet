@@ -44,7 +44,7 @@
     "clean": "rm -rf dist .tsbuildinfo"
   },
   "dependencies": {
-    "g50a-client": "^0.1.0"
+    "g50a-client": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

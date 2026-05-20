@@ -58,8 +58,8 @@ importers:
   packages/homebridge-mnet:
     dependencies:
       g50a-client:
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: workspace:^
+        version: link:../g50a-client
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -712,10 +712,6 @@ packages:
   fast-xml-builder@1.2.0:
     resolution: {integrity: sha512-00aAWieqff+ZJhsXA4g1g7M8k+7AYoMUUHF+/zFb5U6Uv/P0Vl4QZo84/IcufzYalLuEj9928bXN9PbbFzMF0Q==}
 
-  fast-xml-parser@4.5.6:
-    resolution: {integrity: sha512-Yd4vkROfJf8AuJrDIVMVmYfULKmIJszVsMv7Vo71aocsKgFxpdlpSHXSaInvyYfgw2PRuObQSW2GFpVMUjxu9A==}
-    hasBin: true
-
   fast-xml-parser@5.8.0:
     resolution: {integrity: sha512-6bIM7fsJxeo3uXv7OncQYsBAMPJ7V16Slahl/6M98C/i2q+vB1+4a0MtrvYwDFEUrwDSbAmeLDRXsOBwrL7yAg==}
     hasBin: true
@@ -759,11 +755,6 @@ packages:
   futoin-hkdf@1.5.3:
     resolution: {integrity: sha512-SewY5KdMpaoCeh7jachEWFsh1nNlaDjNHZXWqL5IGwtpEYHTgkr2+AMCgNwKWkcc0wpSYrZfR7he4WdmHFtDxQ==}
     engines: {node: '>=8'}
-
-  g50a-client@0.1.0:
-    resolution: {integrity: sha512-mq9fw0wwDAXV9SHr/t3WjzS0jzeJvyVDwOTc35VvlToexwN5bBcKPr+EEneL2RMhOPqhO+yuOLT96h2MO4pyCA==}
-    engines: {node: ^22.10.0 || ^24.0.0}
-    hasBin: true
 
   glob-parent@6.0.2:
     resolution: {integrity: sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A==}
@@ -1039,9 +1030,6 @@ packages:
   strip-json-comments@3.1.1:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
     engines: {node: '>=8'}
-
-  strnum@1.1.2:
-    resolution: {integrity: sha512-vrN+B7DBIoTTZjnPNewwhx6cBA/H+IS7rfW68n7XxC1y7uoiGQBxaKzqucGUgavX15dJgiGztLJ8vxuEzwqBdA==}
 
   strnum@2.3.0:
     resolution: {integrity: sha512-ums3KNd42PGyx5xaoVTO1mjU1bH3NpY4vsrVlnv9PNGqQj8wd7rJ6nEypLrJ7z5vxK5RP0yMLo6J/Gsm62DI5Q==}
@@ -1799,10 +1787,6 @@ snapshots:
       path-expression-matcher: 1.5.0
       xml-naming: 0.1.0
 
-  fast-xml-parser@4.5.6:
-    dependencies:
-      strnum: 1.1.2
-
   fast-xml-parser@5.8.0:
     dependencies:
       '@nodable/entities': 2.1.0
@@ -1843,11 +1827,6 @@ snapshots:
     optional: true
 
   futoin-hkdf@1.5.3: {}
-
-  g50a-client@0.1.0:
-    dependencies:
-      fast-xml-parser: 4.5.6
-      undici: 7.25.0
 
   glob-parent@6.0.2:
     dependencies:
@@ -2122,8 +2101,6 @@ snapshots:
       through: 2.3.8
 
   strip-json-comments@3.1.1: {}
-
-  strnum@1.1.2: {}
 
   strnum@2.3.0: {}
 
