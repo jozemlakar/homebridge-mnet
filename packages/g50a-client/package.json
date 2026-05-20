@@ -1,6 +1,6 @@
 {
   "name": "g50a-client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Framework-free Node.js client for Mitsubishi Electric G-50A / GB-50A centralized AC controllers (M-NET / MELANS XML over HTTP).",
   "keywords": [
     "mitsubishi",
