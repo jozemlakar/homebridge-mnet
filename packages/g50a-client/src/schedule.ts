@@ -95,15 +95,34 @@ export interface WPatternRecordEl {
 // Decode
 // ---------------------------------------------------------------------------
 
-const ITEM_ON = 'CHK_ON';
+const ITEM_SET = 'CHK_ON';
+const ITEM_RELEASE = 'CHK_OFF';
 
 /**
- * `*Item` flags use `CHK_ON` / `CHK_OFF` to indicate whether the event applies
- * the field. Some firmware also returns an empty string for un-checked events;
- * we treat anything that isn't `CHK_ON` as disabled.
+ * `*Item` flags use `CHK_ON` / `CHK_OFF` / `""` to encode the per-event
+ * prohibit-toggle (NOT to gate whether the event fires). Verified live on
+ * G-50BA fw 3.33 and EW-50E fw 7.70 — see protocol-doc §6a.6.
+ *
+ *   `CHK_ON`  → "set prohibit on this attribute when the event fires"
+ *   `CHK_OFF` → "release prohibit on this attribute when the event fires"
+ *   `""`      → no prohibit interaction (the value of `Drive`/`Mode`/`SetTemp`,
+ *               if present, is applied normally and no lockout is touched)
+ *
+ * The earlier version of this decoder mis-named this `*Enabled` and treated
+ * `CHK_ON` as "fires this attribute" — that interpretation was wrong, and
+ * caused our `setWeeklySchedule` writes to actively assert central-control
+ * lockout on every event fire (see commit log around 2026-05-19).
  */
-function decodeItem(value: string | undefined): boolean {
-  return value === ITEM_ON;
+function decodeItem(value: string | undefined): 'set' | 'release' | undefined {
+  if (value === ITEM_SET) return 'set';
+  if (value === ITEM_RELEASE) return 'release';
+  return undefined;
+}
+
+function encodeItem(value: 'set' | 'release' | undefined): string {
+  if (value === 'set') return ITEM_SET;
+  if (value === 'release') return ITEM_RELEASE;
+  return '';
 }
 
 function decodeValueString(value: string | undefined): string | undefined {
@@ -130,9 +149,6 @@ export function decodeWPatternRecord(el: WPatternRecordEl, fallbackIndex: number
     index: decodeInt(el.Index, fallbackIndex),
     hour: decodeInt(el.Hour, 0),
     minute: decodeInt(el.Minute, 0),
-    driveEnabled: decodeItem(el.DriveItem),
-    modeEnabled: decodeItem(el.ModeItem),
-    setTempEnabled: decodeItem(el.SetTempItem),
   };
   const drive = decodeValueString(el.Drive) as Drive | undefined;
   if (drive !== undefined) event.drive = drive;
@@ -142,6 +158,12 @@ export function decodeWPatternRecord(el: WPatternRecordEl, fallbackIndex: number
   if (setTemp !== undefined) event.setTemp = setTemp;
   const setBack = decodeNumber(el.SetBack);
   if (setBack !== undefined) event.setBack = setBack;
+  const driveProhibit = decodeItem(el.DriveItem);
+  if (driveProhibit !== undefined) event.driveProhibit = driveProhibit;
+  const modeProhibit = decodeItem(el.ModeItem);
+  if (modeProhibit !== undefined) event.modeProhibit = modeProhibit;
+  const setTempProhibit = decodeItem(el.SetTempItem);
+  if (setTempProhibit !== undefined) event.setTempProhibit = setTempProhibit;
   return event;
 }
 
@@ -173,9 +195,11 @@ export function encodeWPatternRecord(
     Drive: event.drive ?? '',
     Mode: event.mode ?? '',
     SetTemp: event.setTemp !== undefined ? formatTemp(event.setTemp) : '',
-    DriveItem: event.driveEnabled ? 'CHK_ON' : 'CHK_OFF',
-    ModeItem: event.modeEnabled ? 'CHK_ON' : 'CHK_OFF',
-    SetTempItem: event.setTempEnabled ? 'CHK_ON' : 'CHK_OFF',
+    // *Item is the prohibit-toggle, NOT a "fire this attribute" flag — see
+    // decodeItem and the ScheduleEvent doc-comment.
+    DriveItem: encodeItem(event.driveProhibit),
+    ModeItem: encodeItem(event.modeProhibit),
+    SetTempItem: encodeItem(event.setTempProhibit),
   };
   if (family === 'ae200') {
     base.AirDirection = '';

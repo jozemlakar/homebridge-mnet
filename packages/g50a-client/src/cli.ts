@@ -304,8 +304,12 @@ async function cmdToday(flags: Flags): Promise<void> {
       }
       process.stdout.write(`group ${flags.group} — today's events:\n`);
       for (const e of events) {
-        const flagStr =
-          (e.driveEnabled ? 'D' : '') + (e.modeEnabled ? 'M' : '') + (e.setTempEnabled ? 'T' : '');
+        const fires =
+          (e.drive ? 'D' : '') + (e.mode ? 'M' : '') + (e.setTemp !== undefined ? 'T' : '');
+        const prohibits: string[] = [];
+        if (e.driveProhibit) prohibits.push(`D=${e.driveProhibit[0]}`);
+        if (e.modeProhibit) prohibits.push(`M=${e.modeProhibit[0]}`);
+        if (e.setTempProhibit) prohibits.push(`T=${e.setTempProhibit[0]}`);
         const fields = [
           e.drive ? `Drive=${e.drive}` : '',
           e.mode ? `Mode=${e.mode}` : '',
@@ -314,7 +318,9 @@ async function cmdToday(flags: Flags): Promise<void> {
           .filter(Boolean)
           .join(' ');
         process.stdout.write(
-          `  ${pad2(e.hour)}:${pad2(e.minute)}${flagStr ? ` [${flagStr}]` : ''}${fields ? ' ' + fields : ''}\n`,
+          `  ${pad2(e.hour)}:${pad2(e.minute)}${fires ? ` [${fires}]` : ''}${
+            prohibits.length ? ` {prohibit ${prohibits.join(',')}}` : ''
+          }${fields ? ' ' + fields : ''}\n`,
         );
       }
     },

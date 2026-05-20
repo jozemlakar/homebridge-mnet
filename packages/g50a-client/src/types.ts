@@ -303,14 +303,29 @@ export type DayOfWeek =
   | 'saturday';
 
 /**
- * One scheduled event in a daily timeline. The `*Enabled` flags map to the
- * controller's `*Item` attributes — they decide which fields the event
- * actually applies; fields whose flag is false are left untouched by the
- * controller when the event fires.
+ * One scheduled event in a daily timeline.
  *
- * On read, the controller emits empty strings (`Drive=""`, `DriveItem=""`)
- * for non-set fields. We normalize them to `undefined` here so the shape is
- * predictable.
+ * **Firing semantics:** the event fires Drive / Mode / SetTemp **only if those
+ * fields are set** (`event.drive !== undefined`, etc.). Empty / undefined means
+ * the event does not touch that attribute.
+ *
+ * **Prohibit semantics:** the `*Prohibit` fields are the per-event "Prohibit
+ * Remote Controller Operation" toggles visible in the controller's web UI.
+ *
+ *   - `'set'`     → set prohibit on this attribute when the event fires (locks
+ *                   the local wall remote for that attribute until released)
+ *   - `'release'` → release the prohibit on this attribute (unlocks the wall
+ *                   remote — what AE-2000 produces for a "release event")
+ *   - `undefined` → don't touch the prohibit state for this attribute
+ *
+ * Wire mapping: maps to `DriveItem` / `ModeItem` / `SetTempItem` XML attrs
+ * with values `CHK_ON` (= `'set'`), `CHK_OFF` (= `'release'`), or `""`
+ * (= `undefined`). **A normal "turn on at 04:00" event must use `undefined`,
+ * not `'set'` — `'set'` actively pushes the centrally-controlled lock to the
+ * IC every time the event fires.**
+ *
+ * On read, the controller emits empty strings for non-set fields; we
+ * normalize them here.
  */
 export interface ScheduleEvent {
   /** 1..N within the day, ordered chronologically. */
@@ -323,9 +338,12 @@ export interface ScheduleEvent {
   setTemp?: number;
   /** Energy-saving setback temperature. */
   setBack?: number;
-  driveEnabled: boolean;
-  modeEnabled: boolean;
-  setTempEnabled: boolean;
+  /** Per-event prohibit-toggle for the Drive (ON/OFF) attribute. */
+  driveProhibit?: 'set' | 'release';
+  /** Per-event prohibit-toggle for Mode. */
+  modeProhibit?: 'set' | 'release';
+  /** Per-event prohibit-toggle for SetTemp. */
+  setTempProhibit?: 'set' | 'release';
 }
 
 export interface WeeklySchedule {

@@ -173,17 +173,27 @@ function lookupName(map: Record<string, string>, group: number): string | undefi
 
 function fmtEvent(e: ScheduleEvent): string {
   const t = `${pad2(e.hour)}:${pad2(e.minute)}`;
-  const flags: string[] = [];
-  if (e.driveEnabled) flags.push('D');
-  if (e.modeEnabled) flags.push('M');
-  if (e.setTempEnabled) flags.push('T');
-  const flagStr = flags.length ? ` [${flags.join('')}]` : '';
+  // The legacy "[D/M/T]" flag bracket meant which attributes the event fires.
+  // Under the corrected encoding, that's determined by whether the *value*
+  // fields are present.
+  const fires: string[] = [];
+  if (e.drive) fires.push('D');
+  if (e.mode) fires.push('M');
+  if (e.setTemp !== undefined) fires.push('T');
+  const firesStr = fires.length ? ` [${fires.join('')}]` : '';
+  // Prohibit toggles attached to the event (rare; only set when the schedule
+  // explicitly manipulates the wall-remote lockout).
+  const prohibits: string[] = [];
+  if (e.driveProhibit) prohibits.push(`D=${e.driveProhibit[0]}`);
+  if (e.modeProhibit) prohibits.push(`M=${e.modeProhibit[0]}`);
+  if (e.setTempProhibit) prohibits.push(`T=${e.setTempProhibit[0]}`);
+  const prohStr = prohibits.length ? ` {prohibit ${prohibits.join(',')}}` : '';
   const bits: string[] = [];
   if (e.drive) bits.push(`Drive=${e.drive}`);
   if (e.mode) bits.push(`Mode=${e.mode}`);
   if (e.setTemp !== undefined) bits.push(`SetTemp=${e.setTemp}`);
   if (e.setBack !== undefined) bits.push(`SetBack=${e.setBack}`);
-  return `${t}${flagStr}${bits.length ? ' ' + bits.join(' ') : ''}`;
+  return `${t}${firesStr}${prohStr}${bits.length ? ' ' + bits.join(' ') : ''}`;
 }
 
 function fmtDay(events: ScheduleEvent[]): string {
@@ -195,7 +205,7 @@ function dayProfileKey(events: ScheduleEvent[]): string {
   return events
     .map(
       (e) =>
-        `${e.hour}:${e.minute}|${e.drive ?? ''}|${e.mode ?? ''}|${e.setTemp ?? ''}|${e.setBack ?? ''}|${e.driveEnabled ? 1 : 0}${e.modeEnabled ? 1 : 0}${e.setTempEnabled ? 1 : 0}`,
+        `${e.hour}:${e.minute}|${e.drive ?? ''}|${e.mode ?? ''}|${e.setTemp ?? ''}|${e.setBack ?? ''}|${e.driveProhibit ?? ''}${e.modeProhibit ?? ''}${e.setTempProhibit ?? ''}`,
     )
     .join(',');
 }

@@ -28,7 +28,9 @@ describe('day-of-week ↔ Pattern mapping', () => {
 });
 
 describe('decodeWPatternRecord', () => {
-  it('decodes a populated event', () => {
+  it('decodes a populated event with prohibit-set on every attribute', () => {
+    // `*Item="CHK_ON"` on the wire == this event SETS prohibit on the IC's
+    // wall remote for that attribute (NOT "this event fires this attribute").
     const event = decodeWPatternRecord(
       {
         Index: '1',
@@ -51,34 +53,53 @@ describe('decodeWPatternRecord', () => {
     expect(event.mode).toBe('HEAT');
     expect(event.setTemp).toBe(22.5);
     expect(event.setBack).toBe(18);
-    expect(event.driveEnabled).toBe(true);
-    expect(event.modeEnabled).toBe(true);
-    expect(event.setTempEnabled).toBe(true);
+    expect(event.driveProhibit).toBe('set');
+    expect(event.modeProhibit).toBe('set');
+    expect(event.setTempProhibit).toBe('set');
   });
 
-  it('treats empty strings as "unset" (the on-the-wire encoding for default)', () => {
+  it('decodes a prohibit-release event (Drive empty + DriveItem=CHK_OFF)', () => {
+    // Matches the AE-2000 / web-UI "release prohibit" event shape.
     const event = decodeWPatternRecord(
       {
-        Index: '2',
-        Hour: '17',
-        Minute: '0',
+        Index: '1',
+        Hour: '19',
+        Minute: '10',
         Drive: '',
         Mode: '',
         SetTemp: '',
-        SetBack: '',
+        DriveItem: 'CHK_OFF',
+        ModeItem: '',
+        SetTempItem: '',
+      },
+      1,
+    );
+    expect(event.drive).toBeUndefined();
+    expect(event.driveProhibit).toBe('release');
+    expect(event.modeProhibit).toBeUndefined();
+    expect(event.setTempProhibit).toBeUndefined();
+  });
+
+  it('treats empty *Item strings as "no prohibit interaction"', () => {
+    // The shape observed on the well-behaved :82 g3 schedule.
+    const event = decodeWPatternRecord(
+      {
+        Index: '1',
+        Hour: '7',
+        Minute: '0',
+        Drive: 'ON',
+        Mode: 'COOL',
         DriveItem: '',
         ModeItem: '',
         SetTempItem: '',
       },
-      2,
+      1,
     );
-    expect(event.drive).toBeUndefined();
-    expect(event.mode).toBeUndefined();
-    expect(event.setTemp).toBeUndefined();
-    expect(event.setBack).toBeUndefined();
-    expect(event.driveEnabled).toBe(false);
-    expect(event.modeEnabled).toBe(false);
-    expect(event.setTempEnabled).toBe(false);
+    expect(event.drive).toBe('ON');
+    expect(event.mode).toBe('COOL');
+    expect(event.driveProhibit).toBeUndefined();
+    expect(event.modeProhibit).toBeUndefined();
+    expect(event.setTempProhibit).toBeUndefined();
   });
 
   it('falls back to provided index when the controller omits one', () => {
@@ -87,7 +108,7 @@ describe('decodeWPatternRecord', () => {
 });
 
 describe('encodeWPatternRecord', () => {
-  it('round-trips through decode for a fully populated event', () => {
+  it('round-trips through decode for a fully populated event with prohibit-set', () => {
     const original: ScheduleEvent = {
       index: 1,
       hour: 6,
@@ -96,80 +117,70 @@ describe('encodeWPatternRecord', () => {
       mode: 'COOL',
       setTemp: 24,
       setBack: 28,
-      driveEnabled: true,
-      modeEnabled: true,
-      setTempEnabled: true,
+      driveProhibit: 'set',
+      modeProhibit: 'set',
+      setTempProhibit: 'set',
     };
     const encoded = encodeWPatternRecord(original);
     const decoded = decodeWPatternRecord(encoded, 1);
     expect(decoded).toEqual(original);
   });
 
-  it('emits empty strings for unset fields', () => {
+  it('emits empty strings for *Item when no prohibit toggle is set', () => {
+    // This is the safe default — matches :82 g3 working schedule shape.
+    // Previously this test asserted `CHK_OFF`, which was the bug that caused
+    // central-control lockout on every event fire.
     const event: ScheduleEvent = {
       index: 1,
       hour: 17,
       minute: 0,
-      driveEnabled: false,
-      modeEnabled: false,
-      setTempEnabled: false,
     };
     const encoded = encodeWPatternRecord(event);
     expect(encoded.Drive).toBe('');
     expect(encoded.Mode).toBe('');
     expect(encoded.SetTemp).toBe('');
     expect(encoded.SetBack).toBe('');
-    expect(encoded.DriveItem).toBe('CHK_OFF');
-    expect(encoded.ModeItem).toBe('CHK_OFF');
-    expect(encoded.SetTempItem).toBe('CHK_OFF');
+    expect(encoded.DriveItem).toBe('');
+    expect(encoded.ModeItem).toBe('');
+    expect(encoded.SetTempItem).toBe('');
   });
 
   it('rounds SetTemp to one decimal place', () => {
-    const event: ScheduleEvent = {
-      index: 1,
-      hour: 8,
-      minute: 0,
-      setTemp: 22.34,
-      setTempEnabled: true,
-      driveEnabled: false,
-      modeEnabled: false,
-    };
+    const event: ScheduleEvent = { index: 1, hour: 8, minute: 0, setTemp: 22.34 };
     expect(encodeWPatternRecord(event).SetTemp).toBe('22.3');
   });
 
   it('defaults to g50 family — emits SetBack, no AirDirection/FanSpeed', () => {
-    const event: ScheduleEvent = {
-      index: 1,
-      hour: 6,
-      minute: 0,
-      drive: 'ON',
-      driveEnabled: true,
-      modeEnabled: false,
-      setTempEnabled: false,
-    };
+    const event: ScheduleEvent = { index: 1, hour: 6, minute: 0, drive: 'ON' };
     const e = encodeWPatternRecord(event);
     expect(e.SetBack).toBe('');
     expect(e.AirDirection).toBeUndefined();
     expect(e.FanSpeed).toBeUndefined();
+    expect(e.DriveItem).toBe(''); // safe default
   });
 
   it('ae200 family omits SetBack and adds empty AirDirection + FanSpeed', () => {
-    const event: ScheduleEvent = {
-      index: 1,
-      hour: 6,
-      minute: 0,
-      drive: 'ON',
-      driveEnabled: true,
-      modeEnabled: false,
-      setTempEnabled: false,
-    };
+    const event: ScheduleEvent = { index: 1, hour: 6, minute: 0, drive: 'ON' };
     const e = encodeWPatternRecord(event, 'ae200');
     expect(e.SetBack).toBeUndefined();
     expect(e.AirDirection).toBe('');
     expect(e.FanSpeed).toBe('');
-    // Sanity: AE-200 still carries the same core attrs.
     expect(e.Drive).toBe('ON');
-    expect(e.DriveItem).toBe('CHK_ON');
+    expect(e.DriveItem).toBe(''); // safe default — no prohibit pushed
+  });
+
+  it('encodes an explicit prohibit-release event (the AE-2000 unlock pattern)', () => {
+    const event: ScheduleEvent = {
+      index: 1,
+      hour: 19,
+      minute: 10,
+      driveProhibit: 'release',
+    };
+    const e = encodeWPatternRecord(event);
+    expect(e.Drive).toBe('');
+    expect(e.DriveItem).toBe('CHK_OFF');
+    expect(e.ModeItem).toBe('');
+    expect(e.SetTempItem).toBe('');
   });
 });
 
@@ -232,9 +243,9 @@ describe('validateWeeklySchedule', () => {
   it('accepts chronologically ordered events', () => {
     const s = emptyWeeklySchedule(1);
     s.monday = [
-      { index: 1, hour: 6, minute: 0, driveEnabled: true, drive: 'ON', modeEnabled: false, setTempEnabled: false },
-      { index: 2, hour: 17, minute: 30, driveEnabled: false, modeEnabled: false, setTempEnabled: false },
-      { index: 3, hour: 20, minute: 0, driveEnabled: true, drive: 'OFF', modeEnabled: false, setTempEnabled: false },
+      { index: 1, hour: 6, minute: 0, drive: 'ON' },
+      { index: 2, hour: 17, minute: 30 },
+      { index: 3, hour: 20, minute: 0, drive: 'OFF' },
     ];
     expect(() => validateWeeklySchedule(s)).not.toThrow();
   });
@@ -242,8 +253,8 @@ describe('validateWeeklySchedule', () => {
   it('rejects events at the same time', () => {
     const s = emptyWeeklySchedule(1);
     s.tuesday = [
-      { index: 1, hour: 6, minute: 0, driveEnabled: false, modeEnabled: false, setTempEnabled: false },
-      { index: 2, hour: 6, minute: 0, driveEnabled: false, modeEnabled: false, setTempEnabled: false },
+      { index: 1, hour: 6, minute: 0 },
+      { index: 2, hour: 6, minute: 0 },
     ];
     expect(() => validateWeeklySchedule(s)).toThrow(/chronologically/);
   });
@@ -251,7 +262,7 @@ describe('validateWeeklySchedule', () => {
   it('rejects out-of-range hour', () => {
     const s = emptyWeeklySchedule(1);
     s.wednesday = [
-      { index: 1, hour: 24, minute: 0, driveEnabled: false, modeEnabled: false, setTempEnabled: false },
+      { index: 1, hour: 24, minute: 0 },
     ];
     expect(() => validateWeeklySchedule(s)).toThrow(/hour/);
   });
@@ -259,7 +270,7 @@ describe('validateWeeklySchedule', () => {
   it('rejects out-of-range minute', () => {
     const s: WeeklySchedule = emptyWeeklySchedule(1);
     s.friday = [
-      { index: 1, hour: 6, minute: 60, driveEnabled: false, modeEnabled: false, setTempEnabled: false },
+      { index: 1, hour: 6, minute: 60 },
     ];
     expect(() => validateWeeklySchedule(s)).toThrow(/minute/);
   });

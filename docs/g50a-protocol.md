@@ -441,7 +441,7 @@ A minimal EW-50E-compatible write looks like:
 
 ## 6b. Operation Prohibit — IC wall-remote lockout
 
-> **Status (2026-05-18)**: the **wire format below is empirically verified**, but the **trigger mechanism is not fully understood**. Earlier confident claims in this section about `SystemData.Prohibit` policy and ON-only schedules causing locks were retracted — see §6b.5 below.
+> **Status (2026-05-19, FULLY UNDERSTOOD)**: see §6b.6 below for the actual mechanism. Prior speculation in this section (about `SystemData.Prohibit` policy, ON-only schedule shapes, mute events, "controller-internal latch") was wrong. The real mechanism is much simpler: **schedules carry per-event prohibit toggles via the `*Item` wire attributes, and the controller continuously pushes the schedule's computed active-prohibit state to ICs**. Our schedule encoder was emitting `CHK_ON` on `DriveItem` for every Drive event, which means "set prohibit on Drive" on every push — hence the locks. Fix: emit empty string for `*Item` when no prohibit interaction is intended.
 
 When the IC's prohibit flag is set, the unit's local wall remote displays "centrally controlled" and refuses user input for the locked attributes. **Cannot be written as an XML attribute on `<Mnet>`** — the controller rejects `Prohibit`, `ProhibitDrive`, `Lock` etc. with `<ERROR Point="..." Code="0101" Message="Unknown Attribute"/>`. Must be sent as a raw M-NET frame via `<MnetRouter>` (§8c.1).
 
@@ -494,29 +494,41 @@ Both writable via:
 
 > **What this setting does NOT do (correction, 2026-05-18)**: previous wording here claimed `RC_ONLY` prevents the controller from re-pushing prohibit when a schedule fires. **Empirically untrue**. After flipping a controller from `SC_ALL` to `RC_ONLY` and clearing all per-IC locks, the locks reappeared anyway within hours. Meanwhile a third controller with the same `RC_ONLY` setting never showed locks. So the setting alone does not explain the difference — see §6b.5.
 
-### 6b.5 What we still don't know about the trigger
+### 6b.5 Stale notes — earlier hypotheses (kept for context)
 
-(Notes from live testing 2026-05-18; recorded to keep future readers from making the same wrong assumption I did.)
+The mute-event / paired-ON-OFF heuristic discussed in earlier revisions of this section was wrong. Both were artefacts of an unrelated mechanism (§6b.6 below). The previous text is dropped — see git history.
 
-On three side-by-side G-50BA / EW-50E controllers all set to `RC_ONLY`:
+### 6b.6 Actual mechanism (2026-05-19, confirmed)
 
-| Controller | Schedules present | Original schedule shape | Lock observed |
-|---|---|---|---|
-| :80 | Yes (long-standing) | Originally `ON` event + **mute** events at 17:00 + 20:00. After cleanup: only `ON`. | No locks before cleanup; locks appeared after cleanup. |
-| :81 | Yes (added this session) | Only `ON` event, no closing events. | Locks appeared after we authored schedules; controller had no schedules before. |
-| :82 | Yes (long-standing) | Paired `ON` + `OFF` events on the same day (e.g. `06:00 ON` + `17:00 OFF`). | No locks ever. |
+The schedule subsystem and the IC-prohibit lockout are **the same system**:
 
-Heuristic that fits all three observations: **the schedule engine appears to assert central control once it fires an event and never releases until it fires another event** — *any* subsequent event, even a mute one. :82 closes the day with `Drive=OFF`, :80-original closed it with two mute events; both release the assertion. Our authored schedules on :81 (and on :80 after cleanup) have no second event, so the assertion stays asserted.
+1. **Schedules are stored on the controller** as `WPatternList` records.
+2. Each `WPatternRecord` carries three "prohibit toggle" attributes — `DriveItem`, `ModeItem`, `SetTempItem` — each of which takes one of three values:
+   - `"CHK_ON"`  → "**set** prohibit on this attribute when the event is the current active schedule entry"
+   - `"CHK_OFF"` → "**release** prohibit on this attribute"
+   - `""` *(empty)*  → "do not touch the prohibit state for this attribute"
+3. The controller maintains a computed **active-prohibit state per group**, derived from "which schedule events have fired up to now today". This is independent of whether an event is *firing right now*.
+4. **Every few minutes the controller pushes that computed state to the IC.** This is the periodic `OperationProhibitionSet` (`0D0B…`) frame we observe on the wire.
+5. Therefore, **`g50a clear-prohibit` (which targets the IC directly) is overridden on the next push** unless the schedule's computed active-prohibit state is also "no prohibit".
 
-This is a working hypothesis, not confirmed. To confirm we'd need to author a mute event at, say, 17:00 on one currently-locking group, watch whether the lock stops reappearing.
+Implications for the encoder in this library:
 
-Practical remediation that's known to work for hours at a time:
+- **Default to empty string** for all `*Item` attributes when authoring schedules. This matches the well-behaved `:82 g3` reference (`"Drive":"ON","DriveItem":""`) which never locks ICs.
+- Use `"CHK_ON"` / `"CHK_OFF"` **only when explicitly modeling a per-event prohibit toggle** — for example, an AE-2000-style "unlock at 17:00" event that releases the wall remote at end-of-day.
+- In our TypeScript shape, this is the `driveProhibit` / `modeProhibit` / `setTempProhibit` field on `ScheduleEvent`, taking values `'set'` | `'release'` | `undefined`. The `*Enabled` boolean fields used before 2026-05-19 mapped these to the wrong semantics and were removed.
+
+The earlier confusion arose because we read the `CHK_ON`/`CHK_OFF` names literally as "checkbox state for whether this event fires", instead of as "checkbox state for whether this event toggles prohibit". The XML attribute names look like booleans for a different question. The mtool's UI for the toggles is labelled "Prohibit Remote Controller Operation: [ON/OFF, Mode, Set Temp]" — a separate section from the time + drive value fields — confirming the toggle's purpose.
+
+Practical remediation if locks reappear after a manual fix:
 
 ```bash
-g50a clear-prohibit --host <controller> --port <P>   # clears all IC locks
+# 1. read what's actually stored (look for non-empty *Item values that you didn't intend)
+g50a dump --host <controller>
+# 2. re-author with corrected encoding (empty *Item by default)
+g50a apply --host <controller> --in <corrected.json>
+# 3. clear IC-level state once; controller's next push will keep it cleared
+g50a clear-prohibit --host <controller>
 ```
-
-Re-run when locks reappear. No durable fix verified yet.
 
 ### Legacy command variant (`OperationProhibition`, class `0D24`)
 
