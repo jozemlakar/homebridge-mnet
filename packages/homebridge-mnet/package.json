@@ -1,7 +1,7 @@
 {
   "name": "homebridge-mnet",
   "displayName": "M-NET (Mitsubishi G-50A / GB-50A)",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Homebridge plugin that bridges Mitsubishi Electric M-NET centralized AC controllers (G-50A / GB-50A) to Apple HomeKit.",
   "keywords": [
     "homebridge-plugin",
