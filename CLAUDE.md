@@ -39,7 +39,7 @@ homebridge-mnet/
 
 ## Toolchain
 
-- **Node** ≥ 22.10 (LTS) — see `engines` in each `package.json`. Activate via `nvm use 22`.
+- **Node** — development requires ≥ 22.12 (vite 7, pulled in by vitest, refuses 22.10/22.11); the two published packages still support ≥ 22.10 since nothing in their runtime needs more. Hence the stricter `engines` at the workspace root than in `packages/*/package.json`. Activate via `nvm use 22`.
 - **pnpm** 9.x — `corepack enable && corepack prepare pnpm@9.15.0 --activate`.
 - **TypeScript** 5.7+, CommonJS output, NodeNext resolution.
 - **vitest** for tests (per-package config; `g50a-client` has a separate integration config gated by `INTEGRATION_HOST`).
