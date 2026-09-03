@@ -1052,3 +1052,69 @@ Everything below was **constant for the whole capture**, so there is no signal t
 different:** heating operation (makes the `b` row and `BC Sig` non-trivial), a defrost cycle, an
 active DEMAND or NIGHT signal, an alarm, and a compressor ramp where `F ≠ Foc`. Plus target the
 non-`397E` opcodes for the valve bitmap.
+
+---
+
+## 8g. IC identity opcodes — branch number IS readable (2026-09-03)
+
+**This corrects §8c / the `project-4th-floor-relocation` note that "no XML query exists" for the BC
+branch-port per indoor unit and that only MainteToolNet's raw pass-through reads it.** It is read
+with a single raw M-NET frame through `MnetRouter`, so any client can do it.
+
+Found by parsing the **HTTP** side of a MainteToolNet session (`/servlet/MIMEReceiveServlet`, the
+synchronous `MnetRouter` calls) rather than the `MnetMonitor` SMTP trend — mtool issues these during
+its *Connect Infor* scan. Worth remembering: the trend stream and the interactive queries are two
+different channels, and the interesting one-shot identity data is only in the latter.
+
+| Request | Response | Meaning | Verified |
+|---|---|---|---|
+| `210A` | `218A <bb>` | **BC branch port**, 1 byte. `0x01`–`0x0E` = branch 1–14, `0x00` = the 16th branch (shown as `0` in mtool) | **19/19 ICs** |
+| `2108` | `2188 02 <cc>` | **Capacity code** (mtool's `QJ`) | **19/19 ICs** |
+| `2103` | `2183 01 <aa>` | The unit's own M-NET address | 19/19 |
+| `2100` | `2180 03 80<ic> 83<oc> 84<bc> 1100` | Unit relations: own address (type `0x80`=IC), its OC (`0x83`), its BC (`0x84`) | 19/19 |
+| `2104` | `2184 …` | Model / capability block | not decoded |
+| `2118`, `3112`, `3511` | — | near-constant across units; not decoded | — |
+
+Example — read one unit's branch and capacity:
+
+```sh
+g50a mnet-raw --host <h> [--port P] --da 24 210A 2108
+#   210A -> 218A09      branch 9
+#   2108 -> 21880204    capacity code 4
+```
+
+### Splitting main BC from sub BS
+
+`210A` gives the branch *number*, not which BC controller — on a main-BC-plus-sub-BS system the
+numbering restarts, so several ICs legitimately report the same value. `2100` is no help either: it
+reports the **main** BC address even for units hanging off the sub BS.
+
+The rule is **ascending IC address fills the main BC first, then the sub BS** — a commissioning
+convention (installers address one BC's branches before moving on), not a protocol field. Make it
+self-validating by grouping on the first branch-number collision instead of trusting the ordering
+blindly:
+
+```python
+groups, seen = [[]], set()
+for ic, br in sorted(branch_by_ic.items()):   # ascending IC address
+    if br in seen:                            # a repeat can only mean a new controller
+        groups.append([]); seen = set()
+    groups[-1].append((ic, br)); seen.add(br)
+# groups[0] -> main BC, groups[1] -> sub BS, in address order
+```
+
+Then check the result rather than assuming it:
+
+1. the group boundary is monotonic in IC address,
+2. group sizes fit their controllers (main BC 16 branches, sub BS 8),
+3. the sub group's branch numbers equal the occupied branches in the **BC(sub) valve bitmap**.
+
+Verified on a 19-IC system: ICs 16–31 → main BC 067 (branches 1–14 and 0), ICs 33–37 → sub BS 082
+(branches 2, 3, 4, 8), with all three checks passing and the sub group matching the bitmap exactly.
+
+If a system is ever re-addressed after a unit swap the ordering could break — which is precisely why
+the collision grouping and check 3 are worth keeping rather than hard-coding an address threshold.
+
+Type prefixes seen in `2100` and in the OC/BC `2180` enumerations: **`0x80` = IC, `0x83` = OC,
+`0x84` = BC, `0xA6` = BS.** The OC's enumeration lists its ICs in ascending address order, *not*
+branch order, so it is not a shortcut to the branch map.
