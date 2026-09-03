@@ -810,3 +810,245 @@ Install-specific facts that need to live in operator runbooks, not protocol quer
 - [lib/mnet_client.js](../lib/mnet_client.js) — verified-working implementation of §2–§4
 - [lib/mnet_parser.js](../lib/mnet_parser.js) — partial Bulk decoder (subset of `MnetGroupBulk`)
 - [mnet_config.json](../mnet_config.json) — mapping from HomeKit characteristics to per-group sub-addresses
+
+---
+
+## 8d. Memory banks DECODED — IC block (2026-09-03)
+
+**This supersedes the "decoding each bank is the v0.2 work item" note in §8c** for the IC banks.
+Decoded by capturing `MnetMonitor` SMTP push-back on the wire while reading the same values off
+MainteToolNet's *Operation Status Monitor*, giving a labelled pair for every unit — so these are
+observed, not inferred. Verified against 19 ICs on one OC.
+
+### Encoding: signed 4-digit BCD, tenths
+
+Temperature and superheat fields are **16-bit BCD**, value in tenths, with the **top nibble used as
+a sign flag** (`8..F` = negative):
+
+| Raw | Decodes to |
+|---|---|
+| `0255` | +25.5 |
+| `0016` | +1.6 |
+| `8178` | **−17.8** |
+| `7FFF` | **sentinel — sensor not present** (renders blank in the GUI) |
+
+```python
+def bcd_temp(f):                      # f = 4 hex chars
+    if f == '7FFF': return None
+    neg = f[0] in '89ABCDEF'
+    return (-1 if neg else 1) * int(('0' + f[1:]) if neg else f) / 10.0
+```
+
+### Bank `00` — IC pipe temperatures
+
+Response `39FE00` + 13 payload bytes: one lead byte, then six 16-bit fields.
+
+| Offset (payload) | Field | Meaning |
+|---|---|---|
+| 0 | lead | `00` |
+| 1–2 | **TH1** | intake / return-air temp |
+| 3–4 | **TH2** | liquid-pipe temp |
+| 5–6 | **TH3** | gas-pipe temp |
+| 7–8 | **TH4** | `7FFF` when the unit has no TH4 |
+| 9–10 | *unidentified* | equals TH1 on most units, but **not** on units with negative superheat — do not rely on it |
+| 11–12 | — | `0000` |
+
+TH1/TH2/TH3 matched the GUI **exactly on every unit tested**.
+
+### Bank `81` — capacity save + superheat
+
+Response `39FE81` + 13 payload bytes:
+
+| Offset | Field | Meaning |
+|---|---|---|
+| 0 | lead | `00` |
+| 1 | Save | `0x64` = 100 % (plain hex, **not** BCD) |
+| 2 | Save2 | `0x64` = 100 % |
+| 3–4 | **SH/SC** | superheat, signed BCD (see above) |
+| 5–12 | *unidentified* | |
+
+Decode matched the GUI on **13 of 15** units. The two misses are explained, not unexplained: one
+unit's superheat genuinely varies minute-to-minute (the capture and the screenshot were a minute
+apart), and the other was the single unit in **Heating** mode, where this field is presumably SC
+rather than SH. Treat heat-mode units as undecoded.
+
+### Bank `90` — LEV opening
+
+Response `39FE90` + 6 payload bytes. **This is where `Li` (LEV pulses) lives.**
+
+| Offset | Field | Meaning |
+|---|---|---|
+| 0 | lead | `00` |
+| 1 | flags | varies `04`–`07`; not yet identified |
+| 2–3 | **LEV opening** | **pulses, 4-digit BCD — a plain integer, NOT tenths** |
+| 4–5 | state trailer | `9001` = cooling active, `9000` = cooling idle, `8000` = off / heating-idle |
+
+Decoded **15/15 exact** against the GUI across one OC's indoor units, and confirmed live: a unit
+switched off went from `000601769001` (LEV 176, cooling) to `000600418000` (LEV 41, off) —
+i.e. the trailer tracks drive state and 41 is the shut-valve floor.
+
+Note the units differ from the temperature banks: bank `00`/`81` are BCD **tenths**, bank `90`'s LEV
+is BCD **whole pulses**. Don't apply a `/10` here.
+
+### Bank `80` — setpoint in the tail
+
+Response `39FE80` + 13 payload bytes. The last two bytes are the **setpoint (`TO`)**, signed BCD
+tenths, same encoding as the temperature banks — `0190` = 19.0 °C, `0210` = 21.0 °C.
+Decoded **15/15 exact**. The preceding bytes (`002E0101FE0100080A0000…`) are near-identical across
+units and not yet identified.
+
+### On-demand fetch
+
+All of the above are reachable synchronously via `MnetRouter`, so no `MnetMonitor`/SMTP job is
+needed to read one unit:
+
+```sh
+g50a mnet-bank --host <h> [--port P] --da <IC address> --bank 0x90   # LEV
+g50a mnet-bank --host <h> [--port P] --da <IC address> --bank 0x00   # TH1/TH2/TH3
+g50a mnet-bank --host <h> [--port P] --da <IC address> --bank 0x81   # superheat
+```
+
+This matters because the SMTP trend path only works from the controller's own subnet (see above),
+whereas these reads work from anywhere that can reach the servlet.
+
+### The `Schedule` attribute is READ-ONLY
+
+`<Mnet Group='N' Schedule='OFF'/>` in a `setRequest` is **rejected** — the controller echoes the
+element and returns `<ERROR Point="Schedule" Code="0101" Message="Unknown Attribute"/>`, and the
+flag keeps its previous value. §6a.3 documents `Schedule` as a per-unit attribute; it is readable
+but not writable this way.
+
+To disarm a group's timer, **write an empty weekly schedule** (`g50a clear-schedule --group N`).
+The arming flag then auto-disarms to `OFF` on its own, as §6a.3 notes — confirmed again on a
+G-50BA 3.33: two groups went `Schedule="ON"` → `"OFF"` with `today` reporting no events, and the
+`Drive=OFF` state then survived. Take a `dump` backup first; `apply` restores it.
+
+### Derived relationships worth knowing
+
+- **`SH = TH3 − TH2`** — exact on every Cool-ON row, every sample. Useful as a self-check that the
+  BCD decode is right.
+- **`Li` is the LEV opening in pulses.** It reads exactly **`41`** whenever `IC S = Cool OFF` (valve
+  shut) and 150–318 when cooling, scaling with the unit's `QJ` capacity code.
+- A **healthy cooling unit** shows TH2 ≈ 2–5 °C (near `Te`). A **satisfied** one lets TH2 drift up
+  toward TH1 with `Li = 41`.
+- A unit whose TH2 sits ~15 K above its siblings while TH3 stays cold yields an impossible negative
+  superheat, and indicates a **refrigerant-side fault local to that unit** (suspect the TH2
+  thermistor first). Low airflow gives the opposite signature: cold TH2 and low superheat.
+
+### Other observations from the same capture
+
+- **`MnetMonitor` SMTP push-back is confirmed on the wire** — the controller opens TCP to
+  `SmtpServer:25` from ephemeral ports and delivers `[MnetMonitor] … [Data] … [END]` bodies in
+  cleartext, one connection per send interval. §8c.2's description is accurate.
+- **Controllers ship with no default gateway** in at least one real deployment (`GwLan=""` in
+  `SystemData`), which means `MnetMonitor` can only ever deliver to an SMTP listener on the
+  controller's **own subnet**. Snapshot reads over `MnetRouter` are unaffected, since those are
+  replies. Plan trend capture accordingly.
+- **`SystemData` needs explicit attribute wildcards.** A bare `<SystemData/>` `getRequest` returns
+  an empty `<SystemData/>` echo, not the configuration. Ask for `Model='*' GwLan='*'` etc.
+- **`FilterSign` is a runtime-hours service counter, not a blockage measurement.** On a site where
+  it had never been reset it read `ON` for *all* 36 units on a controller. It carries no per-unit
+  diagnostic signal — don't treat it as evidence a particular filter is dirty.
+- **Attribute support varies per controller and is not predictable from model/firmware.** A G-50BA
+  3.33 accepted `FilterSign`/`ErrorSign`; another G-50BA on the *same* firmware rejected them with
+  `Unknown Attribute`, and — importantly — **the error fails the entire request**, not just the
+  offending attribute. Probe per controller and fall back to the minimal attribute set.
+
+---
+
+## 8e. BC branch valves `a` / `b` / `c` — meaning
+
+The three rows in mtool's BC panel are the **branch solenoid valves**, one set per branch:
+
+| Row | Valve | Open when |
+|---|---|---|
+| **a** | **SVA** — liquid-side feed | that branch's indoor unit is being fed liquid refrigerant to **cool** |
+| **b** | **SVB** — hot-gas feed | the branch is **heating** |
+| **c** | **SVC** — suction / return to the low-pressure line | the branch is connected to suction (stays open for cooling-capable branches even when the IC is thermo-off) |
+
+Established on a `C.Only` loop of 19 ICs:
+
+- **`b` was `0` on every branch in every sample** — nothing was heating, exactly as SVB predicts.
+- **`a` tracked each IC's cooling demand exactly — 15/15** against the IC table's `IC S`: `a=1` iff
+  `Cool ON`, `a=0` when `Cool OFF` / `Stand by`.
+- **`c` was `1` on every cooling-capable branch** regardless of demand, and `0` on exactly two: the
+  single branch whose IC was in **Heating**, and an **unused** branch.
+
+So `a=1, b=0, c=1` reads as "branch lined up for cooling and actively feeding"; `a=0, b=0, c=1` as
+"lined up for cooling, thermo-off"; `c=0` as "not on suction" (heating, or nothing connected).
+
+⚠️ **The bitmap is NOT in the `397Exx` memory banks.** Every bank the mtool subscribed to for the
+BC was searched for the 16-bit `a`/`c` patterns and they are absent — the BC banks decode to
+temperatures, pressures and LEV positions instead (below). mtool must read the valve states with a
+different command class. The likely carriers, seen in the same capture against DA 66/67/82, are the
+`2180…`, `19FF…` and `3192…` responses; those are the next thing to target.
+
+## 8f. Decoded field map — verified against 7–8 GUI samples
+
+All temperatures/pressures are **signed BCD tenths** (§8d). Offsets are **payload byte indexes**,
+i.e. after the `39FE<bank>` header.
+
+### OC (PURY-(W)P400, tested on fw 3.10/5.02)
+
+| Field | Bank | Byte | Width | Encoding |
+|---|---|---|---|---|
+| `63HS1` high pressure | `00` | 1 | 2 | BCD/10 |
+| `TH4` | `00` | 3 | 2 | BCD/10 |
+| `TH7` | `00` | 5 | 2 | BCD/10 |
+| `63LS` low pressure | `00` | 8 | 1 | BCD/10 |
+| `TH5` | `00` | 9 | 2 | BCD/10 |
+| `TH3` | `01` | 1 | 2 | BCD/10 |
+| `TH6` | `01` | 3 | 2 | BCD/10 |
+| `THHS` | `02` | 1 | 2 | BCD/10 |
+| `Tc` condensing | `02` | 3 | 2 | BCD/10 |
+| `Te` evaporating | `02` | 5 | 2 | BCD/10 |
+| `Vdc` | `02` | 7 | 2 | BCD/10 |
+| `Iu` | `50` | 1 | 2 | BCD/10 |
+| `Iw` | `50` | 3 | 2 | BCD/10 |
+| `QjC` | `80` | 6 | 1 | plain u8 |
+| `F` (compressor Hz) | `90` | 2 | 1 | plain u8 |
+| `FAN` | `90` | 7 | 1 | plain u8 |
+
+Each matched **7/7 samples** with varying values, so these are not chance fits.
+
+⚠️ **`F` vs `Foc` cannot be separated from this capture** — they were equal in all 7 samples.
+Bank `90` bytes 4, 5 and 6 also vary over the same value set as `F` (`0x29–0x37` = 41–55), so
+`Foc` is among them. Resolve with a capture taken during a compressor ramp, when the two differ.
+
+### BC (main 067 / sub 082)
+
+| Field | Bank | Byte | Width | Encoding |
+|---|---|---|---|---|
+| `PS1` | `00` | 1 | 2 | BCD/10 |
+| `PS3` | `00` | 5 | 2 | BCD/10 |
+| `T1` | `00` | 7 | 2 | BCD/10 |
+| `T2` | `00` | 9 | 2 | BCD/10 |
+| `T5` | `01` | 3 | 2 | BCD/10 |
+| `T6` | `01` | 5 | 2 | BCD/10 |
+| `PT1` | `01` | 7 | 2 | BCD/10 |
+| `PT3` | `01` | 11 | 2 | BCD/10 |
+| `dPHM` | `02` | 1 | 2 | BCD/10 |
+| `SC1` | `02` | 3 | 2 | BCD/10 |
+| `SC6` | `02` | 5 | 2 | BCD/10 |
+| `SH2` | `02` | 7 | 2 | BCD/10 |
+| `L1`, `L2`, `L3` | `92` | 1, 3, 5 | 2 each | BCD (whole) |
+
+A recurring `B276` / `3276` in the BC banks appears to be a **not-present sentinel**, distinct from
+the ICs' `7FFF`.
+
+### Still undecoded, and what it needs
+
+Everything below was **constant for the whole capture**, so there is no signal to correlate against
+— these are not hard, just un-observed:
+
+- OC booleans/enums: `Ctrl Mode`, `Ope Mode`, `21S4a`, `SV1a`, `SV2`, `SV4a–d`, `SV5b`, `SV5c`,
+  `SV9`, `DEMAND`, `DEMAND2`, `NIGHT`, `NIGHT2`, `SNOW`, `CH21`, `ALh`, `Ope Status`, `Attribute`,
+  `Start-up unit`, `FAN-Ver`, `Rotation Timer`, `QjH`, `TH15`–`TH18` (blank on this model).
+- BC: `BC Sig`, `OC Sig`, `SVM`, `SVM2`.
+- IC: `QJ` (capacity code), `B_No`, and the `Mode` / `State` / `IC S` enums — though bank `90`'s
+  trailer (`9001` / `9000` / `8000`) clearly tracks drive state and is the obvious candidate.
+
+**To finish the client, capture with the same bank subscription while the plant does something
+different:** heating operation (makes the `b` row and `BC Sig` non-trivial), a defrost cycle, an
+active DEMAND or NIGHT signal, an alarm, and a compressor ramp where `F ≠ Foc`. Plus target the
+non-`397E` opcodes for the valve bitmap.
