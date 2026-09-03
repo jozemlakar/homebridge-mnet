@@ -1203,3 +1203,90 @@ all, even though its indoor units still exist and are still addressable. Useful 
 Probing an M-NET address with nothing on it returns `#NO ACK ERROR` (address-level, independent of
 opcode). `SystemData`'s `MCpAdrs` / `DemandUnit` being empty strings is the corresponding
 controller-side signal that no MC-p or demand controller is configured.
+
+---
+
+## 8i. Mixed-mode operation — decoded from a live HEAT test (2026-09-03)
+
+Method: switch one indoor unit on a cooling-dominant heat-recovery loop into **HEAT**, and read raw
+banks against matched MainteToolNet frames. Worth doing rather than waiting for winter — a single
+small unit is enough to tip the loop into mixed mode, though **not immediately** (see the Pre.H.
+note below).
+
+### `QjC` and `QjH`
+
+Both live in OC bank `80`:
+
+| Field | Bank | Byte | Encoding |
+|---|---|---|---|
+| `QjC` cooling indoor capacity | `80` | 6 | plain u8 |
+| `QjH` heating indoor capacity | `80` | 8 | plain u8 |
+
+`QjC` verified exactly against labelled frames: `0x1A` = 26 and `0x1F` = 31 matched mtool's 26 and
+31. `QjH` sat at `00` through every cooling-only frame and went to **`04`** in the same frame mtool
+showed `QjH = 4`. Byte 9 moved with byte 8 in that frame; on one sample it cannot be told apart
+from byte 8, so treat byte 9 as unidentified.
+
+### Mode enums
+
+| Field | Cooling-only | Mixed, cooling-dominant |
+|---|---|---|
+| OC `Ope Mode` | `C.Only` | **`C.Main`** |
+| BC `OC Sig` | `C.Only` | **`C.Main`** |
+| BC `BC Sig` | `C.O.ON` | **`C.H.ON`** |
+
+**`21S4a` stayed `0`** throughout, i.e. the 4-way valve keeps its cooling orientation in `C.Main`.
+So `21S4a` will only be exercised by a heating-dominant loop, not by mixed mode.
+
+### The BC `b` row is confirmed as SVB, empirically
+
+The `b` row had been all-zero in every sample ever taken. During the test it went **non-zero on
+exactly the one branch whose IC reached `Heat ON`**, and that branch read `a=0, b=1, c=0` — hot-gas
+valve open, liquid and suction shut. That is precisely what §8e predicted from theory; it is now
+observed.
+
+### `c=0` means "not on suction", covering stopped units too
+
+§8e originally said `c=0` marked a heating branch or an unused one. A labelled frame with two
+**stopped** units showed `c=0` on both of their branches as well, and a unit switched from HEAT to
+COOL had its `c` go `0 → 1`. So `c=0` = branch isolated from suction, which includes stopped,
+heating, and unused. The `a` row's 1:1 correspondence with `IC S = Cool ON` held in every frame
+checked, including with 7 units cooling simultaneously.
+
+### `State = Pre.H.` — a unit can look heating for minutes without being served
+
+IC `State` has a value beyond ON / Run / Stand by / Stop: **`Pre.H.`**. A unit commanded to HEAT
+entered `Pre.H.` with `IC S = Heat OFF`, and stayed there for **~7 minutes** — opening its LEV to
+500 pulses and letting TH2 rise above room temperature — while the OC still reported `C.Only`,
+`QjH = 0` and an all-zero `b` row. Only later did `IC S` become `Heat ON` and the loop flip to
+`C.Main`. Do not infer "this unit is heating" from Mode, LEV or pipe temperatures; use `IC S`.
+
+### In HEATING, `SH/SC` is not `TH3 − TH2`
+
+Confirmed: a heating unit displayed `SH/SC = 21.7` with TH2 and TH3 both reading 14.7 — difference
+zero. The §8d formula is **cooling-only**, as scoped. The heating (subcool) formula is not yet
+established; `Tc − TH2` was close on one sample but not exact, so it is not claimed here.
+
+### Bank-90 trailer — earlier claim RETRACTED
+
+§8d claimed the bank `90` trailer meant `9001` = cooling active, `9000` = idle, `8000` = off. **That
+is wrong.** Observed on one IC across the test:
+
+| State | LEV | Trailer |
+|---|---|---|
+| OFF, mode COOL | 41 | `8000` |
+| ON, HEAT, `Pre.H.` / `Heat OFF` | 41 | `9000` *and* `8000` on different samples |
+| ON, HEAT, `Pre.H.` / **`Heat ON`** | 180 | **`A001`** |
+| ON, COOL, `Cool ON` (earlier) | 150–318 | `9001` |
+
+What survives: **low byte `01` = thermo-ON** (seen for both `Cool ON` → `9001` and `Heat ON` →
+`A001`), and the high nibble distinguishes cooling (`9`) from heating (`A`) *when thermo-on*. The
+thermo-off values are not explained — the same displayed state produced both `8000` and `9000`.
+
+### The BC valve bitmap is definitively not in the memory banks
+
+Proven, not suspected: with a labelled frame captured **4 seconds** after a raw snapshot, the
+16-bit `a` pattern (`0000110000001000`) and `c` pattern (`1111110111111101`) appear in **none** of
+BC banks `00, 01, 02, 40, 80, 91, 92`, in either bit order. mtool must obtain valve state through an
+opcode not yet identified. Bank `91` is the only BC bank that moved during the test, so it remains
+the best place to look, but it does not contain the bitmap itself.
