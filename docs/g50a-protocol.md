@@ -1089,10 +1089,12 @@ g50a mnet-raw --host <h> [--port P] --da 24 210A 2108
 numbering restarts, so several ICs legitimately report the same value. `2100` is no help either: it
 reports the **main** BC address even for units hanging off the sub BS.
 
-The rule is **ascending IC address fills the main BC first, then the sub BS** — a commissioning
-convention (installers address one BC's branches before moving on), not a protocol field. Make it
-self-validating by grouping on the first branch-number collision instead of trusting the ordering
-blindly:
+**The rule: the lower IC addresses belong to the main BC, the higher ones to the sub BS.** The two
+sets do not interleave, so there is a single address boundary between them.
+
+What the rule does *not* fix is the boundary's position — you don't know a priori how many ICs sit
+on the main BC. Find it by grouping on the first branch-number collision, since a repeated branch
+number can only mean a second controller:
 
 ```python
 groups, seen = [[]], set()
@@ -1103,18 +1105,101 @@ for ic, br in sorted(branch_by_ic.items()):   # ascending IC address
 # groups[0] -> main BC, groups[1] -> sub BS, in address order
 ```
 
-Then check the result rather than assuming it:
+Two cheap cross-checks on the result:
 
-1. the group boundary is monotonic in IC address,
-2. group sizes fit their controllers (main BC 16 branches, sub BS 8),
-3. the sub group's branch numbers equal the occupied branches in the **BC(sub) valve bitmap**.
+1. group sizes fit their controllers (main BC 16 branches, sub BS 8),
+2. the sub group's branch numbers equal the occupied branches in the **BC(sub) valve bitmap**.
 
 Verified on a 19-IC system: ICs 16–31 → main BC 067 (branches 1–14 and 0), ICs 33–37 → sub BS 082
-(branches 2, 3, 4, 8), with all three checks passing and the sub group matching the bitmap exactly.
+(branches 2, 3, 4, 8) — consistent with the rule, and the sub group matches the bitmap exactly.
 
-If a system is ever re-addressed after a unit swap the ordering could break — which is precisely why
-the collision grouping and check 3 are worth keeping rather than hard-coding an address threshold.
+A loop with **no repeated branch number has a single BC**, which is the same check in the negative.
+Confirmed on a 12-IC loop: 12 distinct branches, and `RefSystemList` reports `BC 52, BS —`.
+
+### Branch numbering within a controller is unordered
+
+A separate point, not a qualification of the BC/BS rule above: **branch position within one
+controller bears no relation to IC address** and must be read per unit with `210A`. Two loops on the
+same G-50 order it differently:
+
+| Loop | Ordering |
+|---|---|
+| OC 66 | **ascending** — IC 16→br 1, 17→2, … 29→14 |
+| OC 51 | **descending, then not** — IC 1→br 9, 2→8, 3→7, 4→6, 6→4, 7→3, 8→2, 9→1, then 10→11, 11→10, 12→12, 14→13 |
+
+So a client that guesses branch from address order will be right on one loop and wrong on the next.
+Branch numbers also need not be contiguous — OC 51 leaves branch 5 unused.
+
+### Reading an OC's connected ICs
+
+Two ways, and the first is better:
+
+1. **`<Mnet><RefSystemList/></Mnet>`** (what `g50a topology` uses) — one query, returns every OC
+   with its full IC list plus BC/BS addresses.
+2. **`2100` against the OC** — returns `2180 85 83<oc> 84<bc> [A6<bs>] 80<ic> 80<ic> …`, but the
+   frame is a fixed length so the IC list is **paged**: an OC with a BS fits 3 ICs per response,
+   one without a BS fits 4. mtool issues it repeatedly to walk the list. Use `RefSystemList` unless
+   you specifically need the raw path.
+
+`2108` also works on an **OC**, returning its own capacity code — `0x50` = 80 → P400, `0x46` = 70
+→ P350. Summing the ICs' codes against it gives the connection ratio.
+
 
 Type prefixes seen in `2100` and in the OC/BC `2180` enumerations: **`0x80` = IC, `0x83` = OC,
 `0x84` = BC, `0xA6` = BS.** The OC's enumeration lists its ICs in ascending address order, *not*
 branch order, so it is not a shortcut to the branch map.
+
+---
+
+## 8h. Corrections and family differences (2026-09-03)
+
+### `MnetRouter` is a `setRequest`
+
+Easy to get wrong: the raw-frame pass-through is issued as
+`<Command>setRequest</Command>`, **not** `getRequest`, even though it is a read. A `getRequest`
+carrying `MnetRouter` is rejected with
+`<ERROR Point="MnetCommandList" Code="0101" Message="Unknown Attribute"/>` — a misleading message
+that points at the wrong element.
+
+### Branch `0x00` is context-dependent
+
+`210A` returning `0x00` means **the 16th branch** on a system that has a BC — but **"not
+applicable"** on a system that has none. Verified on a PUHY-300 (2-pipe heat pump, no BC): both its
+ICs return `218A00`.
+
+Consequence for the grouping algorithm in §8g: **check `RefSystemList` for a BC/BS first and skip
+grouping entirely when the loop has neither.** Otherwise two ICs both reporting `0` look like a
+branch-number collision and you infer a phantom second controller.
+
+### Capacity code: `QJ = round(P / 5)`
+
+Exact, not a lookup: P20→4, P25→5, P32→6, P40→8, P50→10, P63→13, and it continues P80→16,
+P100→20, P125→25. The rounding is what makes P32→6 (not 6.4) and P63→13 (not 12.6). Inverting
+`QJ → P` needs the standard-size list, since 6 could be 30 or 32 and only 32 is a real product.
+
+`2108` works on an **OC** as well as an IC: `0x50`→P400, `0x46`→P350, `0x3C`→P300.
+
+### PUMY-SP is a different frame format — the PURY offsets do NOT transfer
+
+On `PUMY-SP112YMK` outdoor units all 14 banks answer, but:
+
+- the byte after `39FE<bank>` is **not** the PURY's constant `00`. It is systematic:
+  **`(330 − DA − bank) mod 256`**, verified on every bank of two units — i.e. these frames carry a
+  leading check byte the PURY frames don't, which shifts everything;
+- the payloads are heavily `FF`-filled — far fewer live fields than a PURY.
+
+Unconfirmed reads pending a labelled sample: bank `02` looks like it holds **Vdc** (556.0 / 579.0 V
+on two units), bank `50` a **current** (6.6 A on a running unit, 0.0 on a stopped one), bank `90` a
+**frequency** (~20 Hz running, 0 stopped). Do not ship these without verification.
+
+### `RefSystemList` omits powered-off systems
+
+A refrigerant system whose outdoor unit is powered down **does not appear** in `RefSystemList` at
+all, even though its indoor units still exist and are still addressable. Useful as a quick
+"is that OC alive" check — and a trap if you treat the list as a static inventory.
+
+### Absent devices answer `#NO ACK ERROR`
+
+Probing an M-NET address with nothing on it returns `#NO ACK ERROR` (address-level, independent of
+opcode). `SystemData`'s `MCpAdrs` / `DemandUnit` being empty strings is the corresponding
+controller-side signal that no MC-p or demand controller is configured.
