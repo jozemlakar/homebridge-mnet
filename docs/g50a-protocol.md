@@ -1410,9 +1410,9 @@ The units are **not** §8d's BCD tenths. These are plain little-endian binary:
 
 | addr | Field | Confidence |
 |---|---|---|
-| `0x00` | connected IC count (`4`) | inferred — `2100` on the same OC lists ICs 45–48 |
-| `0x03` | **FAN** step | 2 samples: `3` at the labelled frame (`FAN =3`), `5` at 08:09 when `F/Hz` was 46 |
-| `0x05` | **flag byte** — `52C`, `21S4`, `SV1(A)(B)(C)`, `demand` | see below |
+| `0x00` | *unidentified*, constant `0x04` | ~~IC count~~ **RETRACTED** — OC 97 has **one** IC and also reads `4` |
+| `0x03` | **FAN** step | confirmed — `3`/`5` on OC 95, `6` on OC 97's panel, `0` on a stopped unit |
+| `0x05` | *unidentified*, per-unit constant (`0x81` OC 95, `0x74` OC 97) | ~~flag byte~~ **RETRACTED** — see below |
 | `0x06` | **ETm** target evaporating temp (5.00) | constant, as a target should be |
 | `0x08` | **Pdm** target discharge pressure (29.50) | constant |
 | `0x0A`–`0x20` | **LEV 1–12** | exact on all 12 (`60,60,158,158,60×8`) |
@@ -1429,18 +1429,32 @@ The units are **not** §8d's BCD tenths. These are plain little-endian binary:
 | `0x7A` | **63HS** high pressure | 20.87 → 20.9 ✓ |
 | `0x7C` | **I(input)** | 1.6 ✓ (2.0 → 1.8 → 1.6) |
 | `0x7E` | **I(comp)** | 6.3 ✓ — independently agrees with `39FE02` |
-| `0x80` | `0xE1C1`, constant | past the end of real data; padding |
+| `0x80` | *unidentified* | `0xE1C1` on OC 95, `0x39B0` on OC 97 — not a fixed sentinel |
+| `0x22`–`0x28` | LEV 13–16 | unused on both units (`60`/`70` idle defaults) |
+| `0x42`–`0x48`, `0x62`–`0x68` | SCm 13–16, SC 13–16 | all zero on both units |
+| `0x82` and up | — | random bytes; **page 10 ends at `0x81`** |
 
 The `m` suffix means *target*: `ETm`, `Pdm` and `SCm` sat perfectly constant while `SC`, `F/Hz` and
 every temperature moved. Don't read a constant there as a broken decode.
 
-⚠️ **The flag byte's individual bits are NOT decoded.** `0x05` read `0x81` in every frame. The panel
-showed `52C = 1` and `21S4`, `SV1(A)`, `SV1(B)`, `SV1(C)`, `demand` all `0`, which is consistent
-with bit 0 = `52C` and bits 1–6 = the zeros — but every flag was constant for the whole capture, so
-this is one observation of one state. Bit 7 is also set and corresponds to nothing on the panel.
-**Resolving this needs a capture spanning a compressor start/stop or an active demand signal** — the
-same differential method as §8i. Worth noting the opportunity: `52C` must change every time the
-compressor cycles, which on OC 95 happens within the hour.
+⚠️ **The flags are NOT on page 10 at all** (corrected 2026-09-04, later the same day). The earlier
+guess that `0x05` was the flag byte with bit 0 = `52C` is **wrong**, and two independent checks kill
+it:
+
+- **A same-unit running/stopped diff.** OC 95 was running at 08:11 (`52C = 1`, `F/Hz 33`, `FAN 3`)
+  and stopped by mid-afternoon (`F/Hz 0`, `FAN 0`). Across that change **only `0x03` moved** —
+  `0x00`, `0x02`, `0x04` and `0x05` were byte-identical. `52C` cannot be in `0x00`–`0x05`.
+- **`0x05` is a per-unit constant**, `0x81` on OC 95 in *both* states and `0x74` on OC 97, so it
+  looks like configuration, not state.
+
+And the whole page is now accounted for (`0x00`–`0x81`, table above), with no byte left over that
+could hold six booleans. So `52C`, `21S4`, `SV1(A)(B)(C)` and `demand` live in **another record** —
+the remaining candidates are `19FF02`'s undecoded `lead`/`f0`/`f1`, `39FE02` byte 2–3, `39FE91`
+bytes 0–3, or a page other than `10`. A same-unit differential is still the right method; there is
+just no need to capture a trend for it now (see the request-form correction below).
+
+**A usable differential exists right now:** OC 97 shows `SV1(A) = 1` while OC 95 showed all three
+`SV1` bits `0`, and OC 95 cycles its compressor within the hour.
 
 ### `19FF02` — a short status record, and this one reads standalone
 
@@ -1461,17 +1475,66 @@ they read 23.05 °C and 14.65 kgf/cm² — near-ambient, and near the equalized 
 pressure for that temperature — while on OC 95 both rose together (`6.90/6.70 → 8.11/7.45 →
 12.09/11.02`) exactly as its compressor wound down and the circuit equalized.
 
-### `197F10<addr>` does NOT work outside a subscription
+### The request form: `197F10<addr>7600` — the 5th byte is mandatory
 
-It answers, but with zeros at low addresses and a **stale buffer** at high ones that returns
-byte-identical garbage on every call — `197F106A` → `19FF106A8F006B358D58B4403549`, unchanged across
-20 minutes and unaffected by sending `2100` first. In mtool's subscribed frames byte 4 is a constant
-`0x76`; in standalone reads it is `(249 − addr) mod 256`. Read that byte as a validity/handle
-marker, **not** a checksum.
+**Corrected 2026-09-04.** An earlier version of this section concluded that `197F10<addr>` only
+works inside a `MnetMonitor` subscription, and therefore that the PUMY panel could only be read from
+the controller's own subnet. **That was wrong, and the cause was the request, not the transport.**
 
-**Consequence: the PUMY panel can only be read through a `MnetMonitor` trend push**, and therefore
-only from the controller's own subnet (§8d). `197F02` is the exception — it answers correctly on a
-one-shot read from anywhere.
+`197F10<addr>` on its own answers with an empty or stale payload:
+
+```
+197F100A       -> 19FF100AED3C0000000000000000     zeros
+197F106A       -> 19FF106A8D3CCFE425238D750252     stale; byte-identical across 20 minutes
+197F100A08     -> 19FF100A08E4000000000000CC01     zeros — so 0x76 is not arbitrary
+197F100A76     -> 19FF100A767636013C003C003C00     LIVE
+197F100A7600   -> 19FF100A760036013C003C003C00     LIVE, byte-identical to mtool's format
+```
+
+The reply **echoes the request's 5th and 6th bytes** into the two positions after `<addr>`, which is
+why mtool's frames show a constant `7600`: it sends `197F10<addr>7600`. Send nothing there and the
+controller substitutes a check byte of the form **`(344 − DA − addr) mod 256`** — verified at five
+addresses on each of two units (DA 95 sums to 249, DA 97 to 247, and 97 − 95 = 2). Same shape as the
+`(330 − DA − bank)` bank check byte of §8h.
+
+`0x76`'s meaning is unknown; `0x00` and `0x08` in that position both return zeros, so treat it as a
+required literal.
+
+**Consequence: the whole PUMY panel reads synchronously from anywhere that can reach the servlet.**
+No trend push, no SMTP listener, no presence on the controller's subnet. `g50a mnet-raw --da 97
+197F106A7600` is enough.
+
+⚠️ **Rate-limit yourself.** Rapid sequential `MnetRouter` requests made a live G-50BA time out at
+60 s while a monitoring system was polling it every 10 s. It recovered on its own after a pause.
+Keep batches to a handful of frames.
+
+### Validated on a second unit, against two labelled panels
+
+Read on **OC 97** at 14:17 against panels at 14:10:07 and 14:14:07 (`FAN 6`, `ETm 9.0`,
+`Pdm 29.5`, `LEV1 310`, `LEV2–12 60`, `SCm 8.0`, `F/Hz 35`, `TH4 56.1`, `TH6 13.7`, `TH7 31.6`,
+`TH3 34.2`, `TH8 43.9`, `63HS 20.9`, `I(input) 1.6`, `I(comp) 5.9`):
+
+| addr | decoded | panel |
+|---|---|---|
+| `0x03` | 6 | `FAN 6` ✓ |
+| `0x06` | 9.00 | `ETm 9.0` ✓ |
+| `0x08` | 29.50 | `Pdm 29.5` ✓ |
+| `0x0A`–`0x0C` | 310, 60 | `LEV1 310`, `LEV2 60` ✓ |
+| `0x6C` | 8.00 | `SCm 8.0` ✓ |
+| `0x6E` | 35 | `F/Hz 35` ✓ |
+| `0x70`–`0x78` | 58.16, 13.27, 32.04, 35.53, 44.32 | `TH4`, `TH6`, `TH7`, `TH3`, `TH8` ✓ |
+| `0x7A`–`0x7E` | 21.37, 1.6, 6.0 | `63HS`, `I(input)`, `I(comp)` ✓ |
+
+A second unit, different values, a different `ETm`/`Pdm` pair and a `LEV1` three times the idle
+floor. The map is not a fit to one frame.
+
+**`19FF02`'s `f4` = `TH2` is also now confirmed**, with reads at 14:14:01 and 14:14:21 bracketing a
+14:14:07 panel by six seconds: `f4` 32.04 → **panel `TH2 31.2`** → 32.90 (rising), `f5` 9.55 →
+**panel `63LS 9.7`** → 9.52 (falling). One earlier read had `f4` = 20.30 while the panel had read
+30.8 ninety seconds before — a genuine ~10 K transient, and a coherent one: that loop was running
+`SC` 0.6–1.0 K with its single indoor unit at `SH/SC` 2.0–2.2 and the LEV wide open at 310, i.e.
+close enough to flooding that a liquid slug to the suction line is expected. **Take one sample per
+field and you will mis-identify it; bracket the panel.**
 
 ### `397EF0` is an identity bank on every device class
 
@@ -1508,6 +1571,10 @@ PURYs, which is the documented reason the PURY field map does not transfer (§8h
 panel reads `PUMY-P36/48NKMU2(-BS)` — a North-American designation — while `397EF0` reports P112,
 consistent with a `PUMY-SP112YMK`. Trust `397EF0`. (The `Ver40.00` in the same title *is* read from
 the unit.)
+
+**Confirmed by experiment:** starting the monitor with a *different* model selected
+(`PUMY-P60NKMU2(-BS)`) changed the title and **nothing else** — same field set, same data, same
+opcodes. Model Selection is cosmetic; it does not change what is polled.
 
 ### The PUMY check byte, confirmed twice more
 
