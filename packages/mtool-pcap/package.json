@@ -1,0 +1,23 @@
+{
+  "name": "mtool-pcap",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline analysis of MainteToolNet / G-50A packet captures: pcapng reader, TCP reassembly, and M-NET frame extractors.",
+  "author": "Joze Mlakar <Joze.Mlakar@ixtlan-team.si>",
+  "license": "ISC",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "mtool-pcap": "dist/cli.js"
+  },
+  "engines": {
+    "node": "^22.10.0 || ^24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src test",
+    "clean": "rm -rf dist .tsbuildinfo"
+  }
+}

@@ -22,15 +22,22 @@ homebridge-mnet/
 │   │   │   └── types.ts             # GroupState, GroupInfo, ClientOptions, WeeklySchedule
 │   │   ├── test/                    # vitest, fixture-driven goldens
 │   │   └── fixtures/                # captured XML responses + bulk hex strings
-│   └── homebridge-mnet/             # Homebridge DynamicPlatform plugin
+│   ├── homebridge-mnet/             # Homebridge DynamicPlatform plugin
 │       ├── src/
 │       │   ├── index.ts             # registerPlatform export
 │       │   ├── MnetPlatform.ts      # DynamicPlatform, owns one G50AClient
 │       │   ├── MnetAccessory.ts     # per-group accessory (AccessoryInfo + HeaterCooler)
 │       │   ├── MnetHeaterCoolerService.ts  # HAP characteristic wiring + 250ms debounce
 │       │   └── mapping.ts           # pure HK↔M-NET converters (no HAP imports)
-│       ├── config.schema.json
-│       └── test/
+│   │   ├── config.schema.json
+│   │   └── test/
+│   └── mtool-pcap/                  # offline capture analysis (private, not published)
+│       ├── src/
+│       │   ├── pcapng.ts            # pcapng / classic-pcap block reader
+│       │   ├── tcp.ts               # IPv4/TCP reassembly + offset->timestamp
+│       │   ├── mtool.ts             # trend-push / MnetRouter / subscription extractors
+│       │   └── cli.ts               # mtool-pcap CLI: streams / banks / subs / trend / queries
+│       └── test/                    # synthetic pcapng fixtures
 ├── .github/workflows/               # CI (build+test on Node 22/24), publish on tag
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json               # strict, NodeNext, ES2022
@@ -73,6 +80,17 @@ node packages/g50a-client/dist/cli.js state  --host <h> [--port <p>]
 node packages/g50a-client/dist/cli.js dump   --host <h> [--port <p>] [--group N] --out=schedules.json
 node packages/g50a-client/dist/cli.js apply  --host <h> [--port <p>] --in=schedules.json [--dry-run]
 ```
+
+To analyse a MainteToolNet packet capture (no `tshark` needed, and `tcpdump -A` loses records that
+split across TCP segments):
+
+```bash
+pnpm --filter mtool-pcap build
+node packages/mtool-pcap/dist/cli.js banks <capture.pcapng>   # DA x opcode; run this first
+```
+
+See [packages/mtool-pcap/README.md](packages/mtool-pcap/README.md) and
+[docs/g50a-protocol.md](docs/g50a-protocol.md) §8j–§8k.
 
 The `apply` command sends ALL records for each Group×Day in one packet — replace semantics, no partial-update. Backup first with `dump` before any write.
 

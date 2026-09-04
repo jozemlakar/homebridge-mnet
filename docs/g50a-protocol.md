@@ -1048,6 +1048,12 @@ Everything below was **constant for the whole capture**, so there is no signal t
 - IC: `QJ` (capacity code), `B_No`, and the `Mode` / `State` / `IC S` enums — though bank `90`'s
   trailer (`9001` / `9000` / `8000`) clearly tracks drive state and is the obvious candidate.
 
+> **2026-09-04:** the OC booleans above were never going to appear in a `397E` bank — on the PUMY
+> family they live in `197F10<addr>`, and the whole panel is decoded in §8k. The equivalent
+> subscription for a PURY OC (DA 66) is `2100 397E00 397E01 397E02 397E04 397E30 397E50 397E80
+> 397E90 397E91`, with no `197F`, so a PURY's flags are still open — but check the subscription list
+> before searching banks again.
+
 **To finish the client, capture with the same bank subscription while the plant does something
 different:** heating operation (makes the `b` row and `BC Sig` non-trivial), a defrost cycle, an
 active DEMAND or NIGHT signal, an alarm, and a compressor ramp where `F ≠ Foc`. Plus target the
@@ -1188,9 +1194,12 @@ On `PUMY-SP112YMK` outdoor units all 14 banks answer, but:
   leading check byte the PURY frames don't, which shifts everything;
 - the payloads are heavily `FF`-filled — far fewer live fields than a PURY.
 
-Unconfirmed reads pending a labelled sample: bank `02` looks like it holds **Vdc** (556.0 / 579.0 V
-on two units), bank `50` a **current** (6.6 A on a running unit, 0.0 on a stopped one), bank `90` a
-**frequency** (~20 Hz running, 0 stopped). Do not ship these without verification.
+~~Unconfirmed reads pending a labelled sample~~ — **bank `02` is now confirmed against a labelled
+frame (§8k):** after the check byte it is `TH8`, an unidentified rising temperature, `FFFF`, **`Vdc`**,
+**`I(comp)`**, `FFFF`. Bank `91` is likewise confirmed as **`LEV_A`** / **`LEV_B`** in whole BCD
+pulses. Banks `50` and `90` are *not* subscribed by mtool for this family, so the earlier guesses
+about them stay unverified — and the PUMY panel's remaining fields turned out to live in a different
+opcode family entirely (§8k).
 
 ### `RefSystemList` omits powered-off systems
 
@@ -1285,6 +1294,12 @@ thermo-off values are not explained — the same displayed state produced both `
 
 ### The BC valve bitmap is definitively not in the memory banks
 
+> **Followed up 2026-09-04 — see §8k.** The subscription list bounds the search: the five subscribed
+> BC opcodes this section never examined (`397EF0`, `397EF1`, `2100`, `197F00`, `3112`) have all now
+> been read, and none carries the bitmap either. The best-supported explanation is that **mtool
+> derives the `a`/`b`/`c` rows from IC state plus the `210A` branch map**, so there is no opcode to
+> find. Stop hunting.
+
 Proven, not suspected: with a labelled frame captured **4 seconds** after a raw snapshot, the
 16-bit `a` pattern (`0000110000001000`) and `c` pattern (`1111110111111101`) appear in **none** of
 BC banks `00, 01, 02, 40, 80, 91, 92`, in either bit order. mtool must obtain valve state through an
@@ -1365,3 +1380,188 @@ live in the subscribed set. Run it first on any new capture.
 - Synchronous `MnetRouter` traffic in that capture is confined to the *Connect Infor* scan and model
   selection; the Operation Status Monitor panel itself is fed by the SMTP subscription. So if a
   displayed field isn't in a subscribed bank, look for a **different dialog's** one-shot query.
+
+---
+
+## 8k. The `197F` / `19FF` family — where the OC panel actually lives (2026-09-04)
+
+Method: a 3-minute capture (`.local/analiza2-20260904.pcapng`) of the trend push with mtool's
+*Operation Status Monitor* open on **OC 95**, a PUMY, paired with a screenshot whose PC clock read
+`08:11:49`. The rows stamped `081150`–`081154` are that screenshot's sample, matched on three
+independent values — `TH8 41.8`, `I(comp) 6.3`, `VDC 548.0`. So this is a labelled frame, not an
+inference. The controller's clock runs ~4 s ahead of the PC's.
+
+⚠️ **First, why the earlier search failed: the PUMY OC panel is not carried by `397Exx` at all.**
+Its subscription is four opcodes — `197F02`, `197F10<addr>` (×14 addresses), `397E02`, `397E91`.
+§8f and §8i looked only in `397E` banks, so the flags were never in scope.
+
+### `19FF10<addr>` — a byte-addressed memory window
+
+Response layout: `19FF 10 <addr> <handle> 00 <8 data bytes>`, the 8 bytes being **4 × u16
+little-endian** starting at `addr`, two bytes per field. Consecutive frames deliberately overlap
+(mtool reads `0x06` and `0x0A`, which share `0x0A`/`0x0C`) and the overlapping values agree — that
+is what proves the addressing rather than assumes it.
+
+The units are **not** §8d's BCD tenths. These are plain little-endian binary:
+
+- temperatures, pressures, subcool — **hundredths** (`0x0827` = 20.87)
+- currents — **tenths** (`0x003F` = 6.3 A)
+- Hz, fan step, LEV pulses — **integers**
+
+| addr | Field | Confidence |
+|---|---|---|
+| `0x00` | connected IC count (`4`) | inferred — `2100` on the same OC lists ICs 45–48 |
+| `0x03` | **FAN** step | 2 samples: `3` at the labelled frame (`FAN =3`), `5` at 08:09 when `F/Hz` was 46 |
+| `0x05` | **flag byte** — `52C`, `21S4`, `SV1(A)(B)(C)`, `demand` | see below |
+| `0x06` | **ETm** target evaporating temp (5.00) | constant, as a target should be |
+| `0x08` | **Pdm** target discharge pressure (29.50) | constant |
+| `0x0A`–`0x20` | **LEV 1–12** | exact on all 12 (`60,60,158,158,60×8`) |
+| `0x2A`–`0x40` | **SCm 1–12** | `SCm3` = 10.00 ✓, rest `0` ✓ |
+| `0x4A`–`0x60` | **SC 1–12** | `SC3` = 13.16 → panel 13.2 ✓ |
+| `0x6A` | **SC** | 12.95 → 13.0 ✓ |
+| `0x6C` | **SCm** target subcool | 8.00 ✓ |
+| `0x6E` | **F/Hz** | 33 ✓ (46 → 39 → 33 over the three cycles) |
+| `0x70` | **TH4** | 65.19 → 65.2 ✓ |
+| `0x72` | **TH6** | 25.84 → 25.8 ✓ |
+| `0x74` | **TH7** | 21.47 → 21.5 ✓ |
+| `0x76` | **TH3** | 22.26 → 22.3 ✓ |
+| `0x78` | **TH8** | 41.78 → 41.8 ✓ |
+| `0x7A` | **63HS** high pressure | 20.87 → 20.9 ✓ |
+| `0x7C` | **I(input)** | 1.6 ✓ (2.0 → 1.8 → 1.6) |
+| `0x7E` | **I(comp)** | 6.3 ✓ — independently agrees with `39FE02` |
+| `0x80` | `0xE1C1`, constant | past the end of real data; padding |
+
+The `m` suffix means *target*: `ETm`, `Pdm` and `SCm` sat perfectly constant while `SC`, `F/Hz` and
+every temperature moved. Don't read a constant there as a broken decode.
+
+⚠️ **The flag byte's individual bits are NOT decoded.** `0x05` read `0x81` in every frame. The panel
+showed `52C = 1` and `21S4`, `SV1(A)`, `SV1(B)`, `SV1(C)`, `demand` all `0`, which is consistent
+with bit 0 = `52C` and bits 1–6 = the zeros — but every flag was constant for the whole capture, so
+this is one observation of one state. Bit 7 is also set and corresponds to nothing on the panel.
+**Resolving this needs a capture spanning a compressor start/stop or an active demand signal** — the
+same differential method as §8i. Worth noting the opportunity: `52C` must change every time the
+compressor cycles, which on OC 95 happens within the hour.
+
+### `19FF02` — a short status record, and this one reads standalone
+
+Lead byte plus six u16, in §8d's 13-byte shape but **big-endian and binary**:
+
+| Field | Meaning |
+|---|---|
+| f2 | **minutes of continuous compressor operation** |
+| f4 | **TH2**, hundredths |
+| f5 | **63LS** low pressure, hundredths |
+| lead, f0, f1, f3 | undecoded — `f0`/`f1` swing non-monotonically, `f3` is always `0000` |
+
+`f2` went `0x1D → 0x1E → 0x1F` across three one-minute cycles; reads `0000` on OC 97, which is
+stopped; and read `0000` on OC 95 later the same morning once its own compressor stopped.
+
+`f4`/`f5` are claimed on three labelled samples plus a physical cross-check: on the **stopped** OC 97
+they read 23.05 °C and 14.65 kgf/cm² — near-ambient, and near the equalized R410A saturation
+pressure for that temperature — while on OC 95 both rose together (`6.90/6.70 → 8.11/7.45 →
+12.09/11.02`) exactly as its compressor wound down and the circuit equalized.
+
+### `197F10<addr>` does NOT work outside a subscription
+
+It answers, but with zeros at low addresses and a **stale buffer** at high ones that returns
+byte-identical garbage on every call — `197F106A` → `19FF106A8F006B358D58B4403549`, unchanged across
+20 minutes and unaffected by sending `2100` first. In mtool's subscribed frames byte 4 is a constant
+`0x76`; in standalone reads it is `(249 − addr) mod 256`. Read that byte as a validity/handle
+marker, **not** a checksum.
+
+**Consequence: the PUMY panel can only be read through a `MnetMonitor` trend push**, and therefore
+only from the controller's own subnet (§8d). `197F02` is the exception — it answers correctly on a
+one-shot read from anywhere.
+
+### `397EF0` is an identity bank on every device class
+
+Payload offsets are zero-based **after** the lead byte (a PURY's `00`, a PUMY's check byte):
+
+| bytes | Field |
+|---|---|
+| 0 | model / generation code |
+| 2–3 | **capacity, BCD** — `0400` = P400, `0350` = P350, `0112` = P112; `0000` on BCs and ICs |
+| 6–7 | **firmware version, BCD** — `0310` = 3.10, `4000` = 40.00, `0704` = 7.04 |
+
+Calibrated against units of *known* capacity and *known* firmware, so the decode is anchored at both
+ends rather than fitted:
+
+| Unit | byte 0 | capacity | version |
+|---|---|---|---|
+| OC 66 | `DE` | `0400` → P400 ✓ known | 3.10 ✓ known |
+| OC 51 | `DE` | `0350` → P350 ✓ known | 3.10 |
+| OC 51 (other controller) | `81` | `0350` → P350 | 5.13 |
+| OC 95 | `D6` | `0112` → P112 | 40.00 ✓ matches panel `Ver40.00` |
+| OC 97 | `D6` | `0112` → P112 | 40.00 |
+| BC 67 | `26` | `0000` | 7.04 |
+| BC 82 | `27` | `0000` | 6.08 |
+| IC 24 | `70` | `0000` | 1.50 |
+
+Two units of identical capacity but different generation (`DE` vs `81`, both P350) show byte 0 is a
+model code and not derived from capacity.
+
+⚠️ **`2108` returns `0xFF` on the PUMY family** — verified on both OC 95 and OC 97 — so `397EF0` is
+the only way to read a PUMY's capacity. `2104` gives series code `0C` for both, against `A2` for the
+PURYs, which is the documented reason the PURY field map does not transfer (§8h).
+
+⚠️ **mtool's panel title is the operator's model *selection*, not the unit's identity.** The OC 95
+panel reads `PUMY-P36/48NKMU2(-BS)` — a North-American designation — while `397EF0` reports P112,
+consistent with a `PUMY-SP112YMK`. Trust `397EF0`. (The `Ver40.00` in the same title *is* read from
+the unit.)
+
+### The PUMY check byte, confirmed twice more
+
+`(330 − DA − bank) mod 256` (§8h) held on two new pairs: DA 95 / bank `F0` → `0xFB`, and DA 97 /
+bank `F0` → `0xF9`.
+
+### The BC valve bitmap: mtool almost certainly derives it
+
+§8i proved the bitmap is in none of the BC's `397E` banks and left "some opcode not yet identified"
+as the explanation. **The subscription list bounds what "not yet identified" can mean.** For DA 67
+and 82 mtool subscribes to exactly:
+
+```
+397EF0  397EF1  2100  197F00  3112  397E00  397E01  397E02  397E80(67 only)  397E91  397E92
+```
+
+§8i searched `00, 01, 02, 40, 80, 91, 92` — note `40` is not even subscribed — leaving `397EF0`,
+`397EF1`, `2100`, `197F00` and `3112` genuinely unexamined. All five have now been read on both
+BCs, and **none contains a 16-bit pattern resembling the `a` / `c` rows**:
+
+| Opcode | BC 67 response | What it is |
+|---|---|---|
+| `397EF0` | `39FEF000260000000284070420000000` | identity (above) |
+| `397EF1` | `39FEF100010000000000000000000000` | one non-zero byte |
+| `2100` | `21808584438342A652801080118012` | neighbour list — 67 self, 66 the OC, 82 the sub BC, then ICs |
+| `197F00` | `19FF00006743004000000000` | identity echo — `0x67`/`0x43` are the DA in BCD and in hex |
+| `3112` | `319201` | a single `01` |
+
+**So there is no BC valve query, and the likeliest explanation is that mtool computes those rows.**
+Every observation in §8e and §8i is a function of data mtool already holds:
+
+- `a = 1` iff that branch's IC reads `IC S = Cool ON` — matched 15/15, and again with 7 units cooling
+- `b = 1` iff the IC reads `Heat ON` — the single heating branch in the §8i test
+- `c = 0` iff the branch is stopped, heating, or unused — all of which follow from IC state plus the
+  `210A` branch map
+
+A genuine hardware readout would be expected to disagree with the derivation *sometimes*; across
+every sample ever taken it never has. **Treat the BC valve rows as a derived view and stop hunting
+for the opcode.** To falsify, find a state where the two must differ: a BC changeover or defrost, or
+a branch whose SVA the outdoor unit shuts while its indoor unit still reports `Cool ON`.
+
+### Reading captures — use the tool, not `tcpdump -A`
+
+`packages/mtool-pcap` now holds a pcapng/pcap reader, TCP reassembly and these extractors, with a
+CLI. §8j's `tcpdump -A` recipe is still fine for a first look but **loses records that split across
+segments** — one row did in this very capture (`39FE82002E01080A01` + `030020640104`).
+
+```sh
+node packages/mtool-pcap/dist/cli.js banks cap.pcapng            # DA x opcode, either transport
+node packages/mtool-pcap/dist/cli.js subs  cap.pcapng            # subscription list
+node packages/mtool-pcap/dist/cli.js trend cap.pcapng --da 95    # trend rows, one unit
+```
+
+⚠️ **`subs` is empty unless the capture covers the moment a monitor panel was opened.**
+`analiza2-20260904.pcapng` missed it and has no `SendCommandRecord` at all;
+`analiza-20260903.pcapng` has the full list. `banks` reconstructs the same answer either way, from
+whatever actually flowed.
