@@ -1290,3 +1290,78 @@ Proven, not suspected: with a labelled frame captured **4 seconds** after a raw 
 BC banks `00, 01, 02, 40, 80, 91, 92`, in either bit order. mtool must obtain valve state through an
 opcode not yet identified. Bank `91` is the only BC bank that moved during the test, so it remains
 the best place to look, but it does not contain the bitmap itself.
+
+---
+
+## 8j. Reading a MainteToolNet pcapng — what worked, so nobody relearns it
+
+Notes from extracting `.local/analiza-20260903.pcapng` (16 min, mtool ↔ a G-50BA). Test fixtures:
+that pcap plus the older `mtool-2017-session-*.pcapng` and `capture-81-2026-05-19.pcapng`.
+
+### Tooling
+
+**There is no `tshark` on this Mac, but `/usr/sbin/tcpdump` reads pcapng fine** (it announces
+`reading from PCAP-NG file …`). No conversion needed.
+
+```sh
+# ASCII payloads for one side of the traffic
+tcpdump -r cap.pcapng -nn -A 'tcp port 25' | sed 's/[^[:print:]]/./g' > smtp.txt   # trend push
+tcpdump -r cap.pcapng -nn -A 'tcp port 80' | sed 's/[^[:print:]]/./g' > http.txt   # queries
+# who talks to whom
+tcpdump -r cap.pcapng -nn | awk '{print $3" > "$5}' | sed 's/:$//' | sort | uniq -c | sort -rn
+```
+
+The `sed` stripping non-printables is **essential** — raw bytes otherwise corrupt the text and
+break every regex downstream.
+
+⚠️ `tcpdump -A` interleaves payload with its own header lines, and XML gets split across TCP
+segments. It was good enough for line-oriented data, but **a real tool should reassemble TCP
+streams** rather than regex over `-A` output.
+
+Timestamps: `-A` emits a header line per packet, e.g.
+`17:04:40.216887 IP 192.168.1.100.56472 > 192.168.1.2.80: Flags [P.], …`. Track the most recent
+such line to attribute payload lines to a time — needed to pair captures with GUI screenshots.
+
+### Port 25 — the `MnetMonitor` trend push (bulk bank data)
+
+Plaintext SMTP bodies: `[MnetMonitor]`, `RequestID=`, `SmtpServer=`, `[Data]`, rows, `[END]`.
+Each data row is `HHMMSS,<DA>,<HEX>`:
+
+```python
+re.findall(r'^(\d{6}),(\d*),([0-9A-Fa-f]{4,})\s*$', text, re.M)
+```
+
+861 of 881 rows in that capture were `39FE<bank>` memory-bank responses. This is the cheap way to
+get a large labelled-in-time corpus of bank payloads for many units at once.
+
+### Port 80 — synchronous queries and the subscription setup
+
+**The trap that cost time: `DA` is an attribute of `MnetCommandList`, not `MnetRouter`.** A regex
+anchored on `<MnetRouter[^>]*DA="…"` matches **zero** times.
+
+```python
+for da, body in re.findall(r'<MnetCommandList DA="(\d+)"[^>]*>(.*?)</MnetCommandList>', t, re.S):
+    for data, rcv in re.findall(r'Data="([0-9A-Fa-f]*)"\s*RcvData="([^"]*)"', body):
+        ...   # request has RcvData="*", the response carries the hex
+```
+
+**The single most valuable query — which banks mtool actually polls per unit:**
+
+```python
+re.findall(r'<SendCommandRecord\s+DA="(\d+)"\s+Data="([0-9A-Fa-f]+)"', t)
+```
+
+That is how the `210A` branch opcode was found, and how it was established that a panel field must
+live in the subscribed set. Run it first on any new capture.
+
+### Frame conventions worth knowing before parsing
+
+- **Response = request with the second byte's high bit set:** `397E`→`39FE`, `2100`→`2180`,
+  `210A`→`218A`, `2D0B`→`2D8B`.
+- `MnetRouter` is issued as **`setRequest`**, even though it reads (see §8h).
+- `RcvData="#NO ACK ERROR"` = nothing at that M-NET address, independent of opcode.
+- Payload encoding: signed BCD tenths, `7FFF` = sensor absent (§8d). **PUMY frames prepend a check
+  byte `(330 − DA − bank) mod 256`** which must be skipped or every offset is wrong (§8h).
+- Synchronous `MnetRouter` traffic in that capture is confined to the *Connect Infor* scan and model
+  selection; the Operation Status Monitor panel itself is fed by the SMTP subscription. So if a
+  displayed field isn't in a subscribed bank, look for a **different dialog's** one-shot query.
