@@ -1680,8 +1680,23 @@ different moments.** The same unit (IC 24) returned three different triples insi
 | 16:55 | `48 E0 05` | thermo-off, LEV 41 |
 
 Dip switches cannot change by themselves, so these are runtime bytes. **Only bytes 2–5 are
-configuration.** When diffing config across units, diff *those*, and confirm any candidate byte is
-static by re-reading the same unit minutes apart before drawing conclusions from it.
+configuration.**
+
+They do not track drive state either. Three reads a minute apart with the unit in an *identical*
+state — thermo-off, `LEV 41`, bank `90` reading `0041 9000` every time — still moved:
+
+| Time | idx 9–11 | bank `90` |
+|---|---|---|
+| 16:55:53 | `48 E0 05` | `0041 9000` |
+| 16:56:48 | `48 E4 25` | `0041 9000` |
+| 16:57:45 | `48 E4 05` | `0041 9000` |
+
+Byte 9 held; bytes 10 and 11 each flipped a single bit (`0x04` and `0x20`) on a sub-minute timescale
+with nothing about the unit changing. That is the signature of **handshake / validity bits**, in the
+same family as the mandatory `0x76` request byte of §8k — not data. **Build nothing on bytes 9–11.**
+
+When diffing configuration across units, diff bytes 2–5 only, and prove a candidate byte is static
+by re-reading *one* unit several minutes apart before drawing any conclusion from it.
 
 ### Reading dip switches for a whole floor
 
