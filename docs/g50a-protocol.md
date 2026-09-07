@@ -1656,16 +1656,47 @@ Payload = the 13 bytes after `19FF00`, zero-indexed:
 | idx | Field | Evidence |
 |---|---|---|
 | 0 | **DA** | `0x18` = 24 |
-| 1 | `DA + 0x61` | `0x79`; holds on every unit sampled |
+| 1 | *unidentified* | `DA + 0x61` on all eight `F/P` units, but **not** a general rule — see the model note |
 | 2–3 | **SW1**, u16 little-endian, bit *n−1* = switch *n* | `0x0100` → bit 8 → **SW1-9 ON**, and the panel shows exactly one switch on, #9 |
 | 4 | **SW2**, bit *n−1* = switch *n* | `0x04` → **SW2-3 ON**, matching the panel |
 | 5 | **SW3**, bit *n−1* = switch *n* | `0x8C` = bits 2,3,7 → **SW3-3, SW3-4, SW3-8 ON**, exactly the three the panel shows |
-| 6–8 | `D0 28 00` — constant on all 8 ICs sampled | candidates for SW4 / SW7 / SW8 / SWIC; **unconfirmed** |
+| 6–8 | `D0 28 00` on `F/P` | candidates for SW4 / SW7 / SW8 / SWIC; **unresolved** — see below |
 | 9–11 | **live state, NOT switches** | see the warning below |
-| 12 | `0x03`, constant | |
+| 12 | `0x03` on `F/P` | |
 
-**`SW2` is the capacity code in binary**, and it equals `2108`'s `QJ`: `0x04` on every P20 and
-`0x05` on every P25 across eight units. Two independent opcodes agreeing on capacity.
+**`SW2` is the capacity code in binary**, and it equals `2108`'s `QJ`. Confirmed on **three unit
+types**, against both labelled panels and `2108`:
+
+| Unit | SW2 byte | Switches ON | QJ | Capacity |
+|---|---|---|---|---|
+| IC 024 London | `0x04` | 3 | 4 | P20 |
+| IC 028 Berlin | `0x05` | 1, 3 | 5 | P25 |
+| ICs 012/035/049 (GUF) | `0x0D` | 1, 3, 4 | 13 | P63 |
+
+The two labelled panels make this airtight: London's SW2 shows **only #3**, Berlin's shows **#1 and
+#3**, and those are the *only* switches that differ between the two units in the entire dialog.
+
+### ⚠️ The payload layout is model-dependent — check `2104` first
+
+`F/P` indoor units return a **13-byte** payload; the `GUF-100RDH` fresh-air units return **10**:
+
+```
+IC 24 (F/P, P20): 19FF00 18 79 00 01 04 8C D0 28 00 48 A0 05 03
+IC 12 (GUF, P63): 19FF00 0C 0C 00 00 0D 00 11 00 88 09
+```
+
+Bytes 0 (DA) and 2–5 (SW1/SW2/SW3) carry the same meaning on both, and everything from byte 6 on
+does not. Byte 1 is `DA + 0x61` on every `F/P` unit but takes unrelated values on the GUFs
+(`0x0C`, `0x04`, `0x00` for DAs 12, 35, 49), so **do not treat it as a rule** — an earlier version of
+this section did. Parse only bytes 0–5 without first identifying the model via `2104`, whose
+response length also varies by type.
+
+**Why bytes 6–8 are still unresolved:** the panel also shows **SW4, SW7, SW8 and SWIC** (London reads
+SW4-5, SW7-4, SW8-1, SWIC-2/3/4 ON), and those bytes are constant at `D0 28 00` across all eight
+`F/P` units — which are also identical in those switch banks, so there is no signal to correlate.
+The GUFs differ in both, but their layout differs too, so they cannot be diffed against the `F/P`
+units either. Resolving this needs a labelled panel for a unit that shares the `F/P` layout **but
+differs in SW4/SW7/SW8/SWIC**.
 
 ### ⚠️ Bytes 9–11 are live state — an earlier reading of them was wrong
 
@@ -1690,6 +1721,7 @@ state — thermo-off, `LEV 41`, bank `90` reading `0041 9000` every time — sti
 | 16:55:53 | `48 E0 05` | `0041 9000` |
 | 16:56:48 | `48 E4 25` | `0041 9000` |
 | 16:57:45 | `48 E4 05` | `0041 9000` |
+| 17:0x (later) | `48 **A0** 05` | — |
 
 Byte 9 held; bytes 10 and 11 each flipped a single bit (`0x04` and `0x20`) on a sub-minute timescale
 with nothing about the unit changing. That is the signature of **handshake / validity bits**, in the
