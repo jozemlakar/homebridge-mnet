@@ -1011,9 +1011,39 @@ i.e. after the `39FE<bank>` header.
 
 Each matched **7/7 samples** with varying values, so these are not chance fits.
 
-⚠️ **`F` vs `Foc` cannot be separated from this capture** — they were equal in all 7 samples.
-Bank `90` bytes 4, 5 and 6 also vary over the same value set as `F` (`0x29–0x37` = 41–55), so
-`Foc` is among them. Resolve with a capture taken during a compressor ramp, when the two differ.
+✅ **Re-verified on a second outdoor unit, 2026-09-07** — OC 51, a **P350** on the same firmware
+(3.10/5.02), against a Refrigerant Circuit Diagram panel timestamped 102 s from the raw read.
+Exact matches on `63HS1` 22.3, `TH7` 25.8, `TH3` 36.9, `THHS` 58.5, `Tc` 37.8, `Iu` 12.9, `Iw` 12.6;
+within normal drift on `TH4`, `TH6`, `63LS`, `TH5`, `Vdc`, `Te`. So the map is not P400-specific.
+
+⚠️ **`F` vs `Foc` — narrowed, and probably not resolvable on this installation.**
+
+Updated 2026-09-07 with labelled frames from a *second* outdoor unit (OC 51, a P350) during a live
+ramp:
+
+| Time | `F` (byte 2) | byte 4 | byte 5 | byte 6 | Panel |
+|---|---|---|---|---|---|
+| 21:55:14 | 40 | 32 | 40 | 40 | (21:53:32 panel: `F 33`, `Foc 33`) |
+| 21:56:50 | 36 | 31 | 36 | 36 | (21:56:32 panel: `F 40`, `Foc 40`) |
+| 21:57:23 | 33 | 31 | 33 | 33 | |
+
+- **Byte 4 is NOT `Foc`** — it read 32 while both `F` and `Foc` were 40, and then held at 31 while
+  the other three swung 40 → 36 → 33. It is a separate, slowly-varying field. (An earlier note here
+  floated byte 4 as the `Foc` candidate; that is retracted.)
+- **Bytes 2, 5 and 6 all track `F` exactly**, including through the ramp, so `Foc` is byte 5 or 6 and
+  the two are still not separated.
+
+**Hypothesis worth acting on: `F` is system-wide and `Foc` is per-outdoor-unit.** Both refrigerant
+systems here have a *single* OC, so under that reading the two are identical **by construction** and
+no capture on this hardware can ever separate them. Supporting evidence: they have been equal in
+every sample ever taken, across two different outdoor units, two firmware revisions and a natural
+ramp that moved all three bytes in lockstep — and the same panel carries a **`Start-up unit OC`**
+field, which only means something on a multi-OC refrigerant system.
+
+**So treat this as closed unless a multi-OC system becomes available.** The one remaining local route
+is MainteToolNet §3.19 *Fixed value setting of compressor frequency*, which would force a commanded
+frequency away from the natural one — a deliberate intervention on a live loop, so out of hours only,
+and worth it only if the distinction ever matters.
 
 ### BC (main 067 / sub 082)
 
