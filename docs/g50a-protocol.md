@@ -1657,7 +1657,7 @@ Payload = the 13 bytes after `19FF00`, zero-indexed:
 |---|---|---|
 | 0 | **DA** | `0x18` = 24 |
 | 1 | *unidentified* | `DA + 0x61` on all eight `F/P` units, but **not** a general rule — see the model note |
-| 2–3 | **SW1**, u16 little-endian, bit *n−1* = switch *n* | `0x0100` → bit 8 → **SW1-9 ON**, and the panel shows exactly one switch on, #9 |
+| 2–3 | **SW1**, u16 little-endian, bit *n−1* = switch *n* | `0x0100` → bit 8 → **SW1-9 ON**; the panel shows exactly one switch on, #9, and SW1-9 is *Auto restart after power failure* — which is plausibly ON estate-wide, so the mapping is confirmed by meaning and not only by position |
 | 4 | **SW2**, bit *n−1* = switch *n* | `0x04` → **SW2-3 ON**, matching the panel |
 | 5 | **SW3**, bit *n−1* = switch *n* | `0x8C` = bits 2,3,7 → **SW3-3, SW3-4, SW3-8 ON**, exactly the three the panel shows |
 | 6–8 | `D0 28 00` on `F/P` | candidates for SW4 / SW7 / SW8 / SWIC; **unresolved** — see below |
@@ -1740,6 +1740,37 @@ for da in 16 17 18 19 20 21 22 23 24; do
   g50a mnet-raw --host <h> --da $da 197F00
 done
 ```
+
+### SW1 functions on `Model F/P`, `Board Indoor Unit`
+
+From the installer documentation, so these are the *meanings* behind the bits above:
+
+| SW1 | Function | ON | OFF |
+|---|---|---|---|
+| 1 | **Active thermistor (intake air)** | built-in thermistor on the **remote controller** | **indoor unit** |
+| 2 | Filter clogging detection | available | unavailable |
+| 3 | Filter life | 2500 hr | **100 hr** |
+| 5 | Remote display | Thermo-ON signal | fan output |
+| 7 | Fan speed | Low → Very low | — |
+| 8 | Fan speed at heating Thermo-OFF | press for speed | follows SW1-7 |
+| 9 | **Auto restart after power failure** | **enabled** | disabled |
+| 10 | Power start/stop | enabled | disabled |
+
+(4 and 6 unused.)
+
+**SW1-1 is the one that matters for diagnostics.** It selects which sensor the unit *controls on*. With
+it OFF, the controlled variable is the indoor unit's own intake thermistor — i.e. the `TH1` of bank
+`00`, and the `InletTemp` the controller reports. Two consequences:
+
+- A unit whose `TH1` reads wrong will drive the **room** wrong by exactly that error, while looking
+  perfectly healthy in every table (see the `InletTemp` warning in §8d's neighbourhood).
+- Sampling many units, `TH1` sits within ~0.5 K of each unit's own setpoint, which is a *tautology*
+  under this setting rather than evidence of comfort — and it is a quick way to confirm SW1-1 is OFF
+  across an installation without reading the switch.
+
+**SW1-3 = OFF is worth knowing before interpreting `FilterSign`:** a 100-hour filter reminder trips
+after ~4 days of running, so `FilterSign` reads ON more or less permanently on every unit and carries
+no information about actual filter condition.
 
 ⚠️ **Switch numbering is model-dependent.** The dialog itself warns that "title of DipSW on the
 circuit board has the difference depending on the model" and points at a SWA/SWB conversion table.
