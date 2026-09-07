@@ -1065,12 +1065,38 @@ ramp:
 - **Bytes 2, 5 and 6 all track `F` exactly**, including through the ramp, so `Foc` is byte 5 or 6 and
   the two are still not separated.
 
-### ✅ Why they cannot be separated here — CLOSED
+### ✅ CLOSED — the manual gives the formula: `F = Foc + Fos`
 
-**`F` is the refrigerant system's total; `Foc` is one outdoor unit's contribution.** A refrigerant
-system in this family may be built from **several outdoor units** — a P400 can be delivered as
-2 × P200 — and `Foc` is the per-unit figure. Both loops on this installation have a **single** OC, so
-**`F` ≡ `Foc` by construction** and no capture here can ever separate them.
+From the MainteToolNet manual's *Operation Status Monitor Terminology*:
+
+| Mark | Official name | Meaning |
+|---|---|---|
+| **`F`** | Temporary compressor frequency for calculation | variable for control — **total frequency: `Foc` + `Fos`** |
+| **`Foc`** | " | total frequency of the **OC** unit |
+| **`Fos`** | " | total frequency of the **OS** unit |
+| `F1` | Temporary compressor frequency of No.1 Comp | variable for control |
+| `F2` | Temporary compressor frequency of No.2 Comp | variable for control |
+| `Primality` | — | whether the unit is **primary or secondary** |
+| `Power` | Power source frequency | mains frequency (Hz) |
+| `Save` | — | **signal of capacity saving from a system controller**; a figure is %, **no signal shows as 100 %** |
+
+So a refrigerant system may be built from **several outdoor units** — a P400 can be delivered as
+2 × P200 — and with no `OS` present `Fos = 0`, making **`F` ≡ `Foc` identically**. That is arithmetic,
+not coincidence, and no capture on a single-OC loop can ever separate them.
+
+⚠️ **`F` is a *control variable*, not a measurement.** The official name is "temporary compressor
+frequency **for calculation**", and the same wording covers `Foc`, `Fos`, `F1` and `F2`. Do not treat
+it as observed shaft speed — in particular, power estimated from `Vdc`/`Iu`/`Iw`/`F` inherits that
+caveat on top of the unmeasured inverter output voltage (§8f).
+
+⚠️ **`Save = 100 %` means "no capacity-saving signal received"**, not "limited to 100 %". Reading it
+as "no demand limiting in effect" is right in substance, but it is the *absence* of a signal, so do
+not infer that a system controller is actively permitting full output.
+
+**`F1`/`F2` also explain why bank `90` carries several frequency-like bytes** — a unit may have two
+compressors. Bytes 2 and 6 were identical across a 12-sample ramp and byte 5 matched 11/12, which
+fits `F`, `Foc` and `F1` all coinciding on a single-OC, single-compressor loop; byte 4 behaves
+differently again and stays unidentified.
 
 That fully accounts for the observations: equal in every sample ever taken, across two different
 outdoor units, two firmware revisions, steady state *and* a live ramp that moved bytes 2, 5 and 6 in
