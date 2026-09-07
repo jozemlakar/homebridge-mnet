@@ -1632,3 +1632,69 @@ node packages/mtool-pcap/dist/cli.js trend cap.pcapng --da 95    # trend rows, o
 `analiza2-20260904.pcapng` missed it and has no `SendCommandRecord` at all;
 `analiza-20260903.pcapng` has the full list. `banks` reconstructs the same answer either way, from
 whatever actually flowed.
+
+
+---
+
+## 8l. `197F00` is the DipSW Monitor's read — the dip switches are on the bus (2026-09-07)
+
+mtool's *DipSW Monitor* uses exactly **two** opcodes, and nothing else:
+
+```
+197F00 -> 19FF00 <13-byte payload>
+2104   -> 2184 80 FFFF <DA> 07 B0 00        (model / attribute)
+```
+
+Captured with the dialog open on IC 024 and paired with the panel itself (`Address 024`,
+`Attribute IC`, `Model F/P`, `Board Indoor Unit`), so the switch bits below are **labelled, not
+inferred**.
+
+### Payload map
+
+Payload = the 13 bytes after `19FF00`, zero-indexed:
+
+| idx | Field | Evidence |
+|---|---|---|
+| 0 | **DA** | `0x18` = 24 |
+| 1 | `DA + 0x61` | `0x79`; holds on every unit sampled |
+| 2–3 | **SW1**, u16 little-endian, bit *n−1* = switch *n* | `0x0100` → bit 8 → **SW1-9 ON**, and the panel shows exactly one switch on, #9 |
+| 4 | **SW2**, bit *n−1* = switch *n* | `0x04` → **SW2-3 ON**, matching the panel |
+| 5 | **SW3**, bit *n−1* = switch *n* | `0x8C` = bits 2,3,7 → **SW3-3, SW3-4, SW3-8 ON**, exactly the three the panel shows |
+| 6–8 | `D0 28 00` — constant on all 8 ICs sampled | candidates for SW4 / SW7 / SW8 / SWIC; **unconfirmed** |
+| 9–11 | **live state, NOT switches** | see the warning below |
+| 12 | `0x03`, constant | |
+
+**`SW2` is the capacity code in binary**, and it equals `2108`'s `QJ`: `0x04` on every P20 and
+`0x05` on every P25 across eight units. Two independent opcodes agreeing on capacity.
+
+### ⚠️ Bytes 9–11 are live state — an earlier reading of them was wrong
+
+A previous pass compared these bytes across units and concluded there was a "two-valued
+configuration field" distinguishing some ICs. **That was an artifact of sampling different units at
+different moments.** The same unit (IC 24) returned three different triples inside one hour:
+
+| Time | idx 9–11 | Unit state |
+|---|---|---|
+| ~15:5x | `48 E0 25` | — |
+| 16:51 | `4A E4 05` | — |
+| 16:55 | `48 E0 05` | thermo-off, LEV 41 |
+
+Dip switches cannot change by themselves, so these are runtime bytes. **Only bytes 2–5 are
+configuration.** When diffing config across units, diff *those*, and confirm any candidate byte is
+static by re-reading the same unit minutes apart before drawing conclusions from it.
+
+### Reading dip switches for a whole floor
+
+`197F00` answers synchronously from anywhere, so the DipSW Monitor is no longer needed to audit
+switch settings in bulk:
+
+```sh
+for da in 16 17 18 19 20 21 22 23 24; do
+  g50a mnet-raw --host <h> --da $da 197F00
+done
+```
+
+⚠️ **Switch numbering is model-dependent.** The dialog itself warns that "title of DipSW on the
+circuit board has the difference depending on the model" and points at a SWA/SWB conversion table.
+The bit→switch mapping above is verified only on `Model F/P`, `Board Indoor Unit`. Do not carry a
+*meaning* (as opposed to a bit position) across models without a labelled panel for that model.
