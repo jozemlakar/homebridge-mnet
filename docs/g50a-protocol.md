@@ -1048,9 +1048,18 @@ when a system has more than one outdoor unit.
 **Consequences for a client:**
 
 - On a single-OC loop, report one frequency and do not pretend to distinguish them.
-- Do **not** hard-code `Foc = F`. On a multi-OC system they will differ, and bytes 5/6 remain the
-  unresolved pair — so if this ever runs against a multi-OC refrigerant system, that is the moment
-  the distinction becomes both visible and necessary.
+- Do **not** hard-code `Foc = F`. On a multi-OC system they will differ — so if this ever runs
+  against one, that is the moment the distinction becomes both visible and necessary.
+
+A 12-sample ramp on OC 51 (22 s spacing, `F` swinging 36 → 23 → 31 as units cycled) pins down which
+bytes are which:
+
+| | behaviour over the ramp |
+|---|---|
+| **bytes 2 and 6** | **identical in 12/12 samples** — consistent with `F` and `Foc` being one number on a single-OC loop |
+| byte 5 | equal to them in 11/12; once read 26 against 28 during an acceleration — either a lagging variant or a torn read, **not claimable either way** |
+| byte 4 | plainly **a different field**: decayed 31 → 29 → 26 → 24 monotonically and then held at 24 while `F` bounced 23 → 31. Looks like a held minimum or a long-window average; unidentified |
+| byte 7 | `FAN`, moved 34 → 22 with the load |
 - Stop trying to force it locally. MainteToolNet §3.19 (*fixed value setting of compressor
   frequency*) could drive a commanded value away from the natural one, but on a single-OC loop that
   changes both numbers together, so it would not answer the question either.
