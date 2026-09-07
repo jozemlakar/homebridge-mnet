@@ -165,9 +165,37 @@ MC, MCp, MCt, ME,
 OS, RC, SC, SR, ST, TR, TU, VDC, AIC
 ```
 
-**`OS` is an auxiliary (slave) outdoor unit** — the second and subsequent outdoor units of a
-refrigerant system built from more than one (see the `F`/`Foc` note in §8f). Its presence is the
-authoritative test for whether a loop is multi-OC.
+**Authoritative meanings**, from the MainteToolNet manual (WT03939X75) §8 *Explanation of
+Terminology* — these are the tool's *Attribute* codes and they line up with this enum:
+
+| Code | Meaning | | Code | Meaning |
+|---|---|---|---|---|
+| `IC` | Indoor unit | | `SC` | System controller |
+| `OC` | **Outdoor unit** (heat source unit) | | `TR` | Central controller |
+| **`OS`** | **Outdoor Sub Unit** — the slave outdoor unit | | `RC` | Remote controller |
+| `BC` / `BS` | BC controller | | `GR` | Group remote controller |
+| `LC` | Lossnay | | `AN` | Multi panel controller |
+| `FU` | Fresh master | | `MA` | M-NET converter for K-control |
+| `MC` | Measuring controller | | `KA` | K-control converter for M-NET |
+| `IU` | ICE-Y sub controller | | | |
+
+The manual also lists codes this enum does not carry (`CG` control gateway, `VR` VAV remote, `MB`
+parallel interface, `AR`/`FR` air-handling and fan-coil remotes, `SE` remote sensor, `HB`/`HS` hybrid
+VRF branch controllers, `HU` hydro unit, `AH` air-handling unit, `FL` fan coil, `FA` filter unit,
+`CA` CAV controller, `BU` booster, `AU` water HEX, `CE`/`CL` hot-water heat pump main/sub, `AHC`
+advanced HVAC controller) — newer equipment than this firmware knows about.
+
+Still unidentified in this enum: `OCi`, `CDC`, `CR`, `DC`, `DDC`, `GW`, `IDC`, `KIC`, `MCp`, `MCt`,
+`ME`, `SR`, `ST`, `TU`, `VDC`, `AIC`, `NONE`, `NOUSE`, `TMP`, `QQ`.
+
+**`OS` matters most here:** it is the second and subsequent outdoor unit of a refrigerant system
+built from more than one, and its presence is the authoritative test for whether a loop is multi-OC
+(see the `F`/`Foc` note in §8f).
+
+⚠️ **The manual's own main-screen glossary defines `Intake` as "Room temperature".** That is the
+conflation to be careful about: the value is the indoor unit's *intake* reading, and the tool — like
+the XML's `InletTemp` — presents it as if it were the room's. A unit whose intake sensor is wrong or
+badly sited will therefore misreport the room in both the GUI and the protocol. See §8l.
 
 For HomeKit-relevant home installations, **`IC`** is the only one we filter on (indoor unit) — see [lib/mnet_client.js:107](../lib/mnet_client.js#L107).
 
