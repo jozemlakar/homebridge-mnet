@@ -1788,6 +1788,20 @@ exactly the `QJ` value in binary, confirming the byte-4 decode above from the ve
 | 9 | **Superheat setting temperature** | 9 (5) degrees | **6 (2) degrees** |
 | 10 | **Sub cool setting temperature** | 15 degrees | **10 degrees** |
 
+⚠️ **Dip switches are read-only over M-NET — there is no write path.** `197F00` exposes them, and
+MainteToolNet's *Indoor unit function settings* dialog (manual §3.16, "Setting the Values for Indoor
+unit Functions") offers only **two** functions:
+
+```
+Thermo differential of the heater
+Differential of auto mode changing
+```
+
+Neither is the thermistor position, so **SW1-1 can only be changed physically on the board.** Note
+also *which* board: the OC404 tables put **SW1 on the address board**, while SW2/SW3/SW4 are on the
+**indoor controller board** — and SW1/SW3 take effect "under suspension", so the unit must be
+stopped.
+
 `SW4` (poles 1–5) is **model selection**, factory-preset per model; `SWC` selects the air outlet
 (see OC404 §5); `SW11`/`SW12` are the rotary address switches and `SW14` the connection number for
 an R2-series outdoor unit; `SW5` selects 220 V / 240 V.
