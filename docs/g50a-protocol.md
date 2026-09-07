@@ -1033,17 +1033,27 @@ ramp:
 - **Bytes 2, 5 and 6 all track `F` exactly**, including through the ramp, so `Foc` is byte 5 or 6 and
   the two are still not separated.
 
-**Hypothesis worth acting on: `F` is system-wide and `Foc` is per-outdoor-unit.** Both refrigerant
-systems here have a *single* OC, so under that reading the two are identical **by construction** and
-no capture on this hardware can ever separate them. Supporting evidence: they have been equal in
-every sample ever taken, across two different outdoor units, two firmware revisions and a natural
-ramp that moved all three bytes in lockstep — and the same panel carries a **`Start-up unit OC`**
-field, which only means something on a multi-OC refrigerant system.
+### ✅ Why they cannot be separated here — CLOSED
 
-**So treat this as closed unless a multi-OC system becomes available.** The one remaining local route
-is MainteToolNet §3.19 *Fixed value setting of compressor frequency*, which would force a commanded
-frequency away from the natural one — a deliberate intervention on a live loop, so out of hours only,
-and worth it only if the distinction ever matters.
+**`F` is the refrigerant system's total; `Foc` is one outdoor unit's contribution.** A refrigerant
+system in this family may be built from **several outdoor units** — a P400 can be delivered as
+2 × P200 — and `Foc` is the per-unit figure. Both loops on this installation have a **single** OC, so
+**`F` ≡ `Foc` by construction** and no capture here can ever separate them.
+
+That fully accounts for the observations: equal in every sample ever taken, across two different
+outdoor units, two firmware revisions, steady state *and* a live ramp that moved bytes 2, 5 and 6 in
+lockstep. The same panel's **`Start-up unit OC`** field is the other tell — it only means anything
+when a system has more than one outdoor unit.
+
+**Consequences for a client:**
+
+- On a single-OC loop, report one frequency and do not pretend to distinguish them.
+- Do **not** hard-code `Foc = F`. On a multi-OC system they will differ, and bytes 5/6 remain the
+  unresolved pair — so if this ever runs against a multi-OC refrigerant system, that is the moment
+  the distinction becomes both visible and necessary.
+- Stop trying to force it locally. MainteToolNet §3.19 (*fixed value setting of compressor
+  frequency*) could drive a commanded value away from the natural one, but on a single-OC loop that
+  changes both numbers together, so it would not answer the question either.
 
 ### BC (main 067 / sub 082)
 
