@@ -1741,22 +1741,60 @@ for da in 16 17 18 19 20 21 22 23 24; do
 done
 ```
 
-### SW1 functions on `Model F/P`, `Board Indoor Unit`
+### The `F/P` model class is the **PFFY** series — floor standing
 
-From the installer documentation, so these are the *meanings* behind the bits above:
+`Model F/P` in mtool's DipSW Monitor corresponds to Mitsubishi's **PFFY-P·VKM-E** floor-standing
+indoor units (`PFFY-P20 / P25 / P32 / P40VKM-E`), per service manual **OC404**. Two consequences
+worth knowing before interpreting `TH1`:
+
+- **The intake is at floor level.** Unlike a ceiling cassette, this unit samples air at the bottom of
+  the room, where cold air pools. A low `TH1` relative to mid-room is therefore *geometrically*
+  possible on this model without any sensor fault, so distinguishing the two needs a control unit or
+  a physical measurement.
+- **`TH1` is `TH21` on the board** — the manual calls it the *room temperature thermistor*; `TH22` is
+  the liquid pipe and `TH23` the gas pipe, matching bank `00`'s `TH1`/`TH2`/`TH3`.
+
+### SW1/SW2/SW3/SW4 functions on `Model F/P` (`PFFY`), from OC404 §9-3
+
+The authoritative table, so these are the *meanings* behind the bits above. Effective timing matters:
+**SW1/SW3 take effect "under suspension"** (unit stopped), **SW2/SW4 "before power supply ON"**.
 
 | SW1 | Function | ON | OFF |
 |---|---|---|---|
-| 1 | **Active thermistor (intake air)** | built-in thermistor on the **remote controller** | **indoor unit** |
-| 2 | Filter clogging detection | available | unavailable |
-| 3 | Filter life | 2500 hr | **100 hr** |
-| 5 | Remote display | Thermo-ON signal | fan output |
-| 7 | Fan speed | Low → Very low | — |
-| 8 | Fan speed at heating Thermo-OFF | press for speed | follows SW1-7 |
-| 9 | **Auto restart after power failure** | **enabled** | disabled |
-| 10 | Power start/stop | enabled | disabled |
+| 1 | **Thermistor (room temperature detection) position** | built-in **remote controller** | **indoor unit** |
+| 2 | Filter clogging detection | provided | not provided |
+| 3 | Filter cleaning | 2,500 hr | **100 hr** |
+| 4 | Fresh air intake | effective | not effective |
+| 5 | Switching remote controller display | indicates thermostat ON | indicates fan operation ON/OFF |
+| 6 | Humidifier control | always while heat is ON | depends on condition |
+| 7 | Air flow when… | Low | Extra low |
+| 8 | Heat thermostat OFF | setting air flow | depends on SW1-7 |
+| 9 | **Auto restart function** | **effective** | not effective |
+| 10 | Power ON/OFF by breaker | effective | not effective |
 
-(4 and 6 unused.)
+**SW2 (poles 1–6) is the capacity code**, and the manual gives a pattern per capacity — which is
+exactly the `QJ` value in binary, confirming the byte-4 decode above from the vendor side.
+
+| SW3 | Function | ON | OFF |
+|---|---|---|---|
+| 1 | Heat pump / cooling only | cooling only | **heat pump** |
+| 2 | Limitation at damper open operation | not effective | effective |
+| 3 | Vane | available | not available |
+| 4 | Vane swing function | available | not available |
+| 5 | Vane horizontal angle | second setting | first setting |
+| 6 | Vane cooling limit angle | horizontal | Down B, C |
+| 7 | Change LEV opening when thermostat OFF | effective | not effective |
+| 8 | Heat 4 degrees up | not effective | effective |
+| 9 | **Superheat setting temperature** | 9 (5) degrees | **6 (2) degrees** |
+| 10 | **Sub cool setting temperature** | 15 degrees | **10 degrees** |
+
+`SW4` (poles 1–5) is **model selection**, factory-preset per model; `SWC` selects the air outlet
+(see OC404 §5); `SW11`/`SW12` are the rotary address switches and `SW14` the connection number for
+an R2-series outdoor unit; `SW5` selects 220 V / 240 V.
+
+**Why SW3-9/SW3-10 are useful:** they set the indoor unit's *target* superheat and subcool. On our
+installation both read OFF, i.e. **target SH = 6 K and target SC = 10 K**, which gives a reference
+for judging whether a measured `SH/SC` from bank `81` is normal or flooded.
 
 **SW1-1 is the one that matters for diagnostics.** It selects which sensor the unit *controls on*. With
 it OFF, the controlled variable is the indoor unit's own intake thermistor — i.e. the `TH1` of bank
@@ -1767,6 +1805,22 @@ it OFF, the controlled variable is the indoor unit's own intake thermistor — i
 - Sampling many units, `TH1` sits within ~0.5 K of each unit's own setpoint, which is a *tautology*
   under this setting rather than evidence of comfort — and it is a quick way to confirm SW1-1 is OFF
   across an installation without reading the switch.
+
+**Quantifying a suspect room thermistor.** OC404 §9-1 gives the check as "disconnect the connector,
+measure resistance; normal 4.3–9.6 kΩ at 10–30 °C ambient; abnormal = open or short", and the
+characteristic is `Rt = 15·exp{3480·(1/(273+t) − 1/273)}` kΩ with `R0 = 15 kΩ ±3 %`, `B = 3480 ±2 %`:
+
+| °C | kΩ | | °C | kΩ |
+|---|---|---|---|---|
+| 0 | 15.0 | | 22 | 5.80 |
+| 10 | 9.6 | | 24 | 5.35 |
+| 18.5 | 6.68 | | 25 | 5.2 |
+| 20 | 6.28 | | 30 | 4.3 |
+
+⚠️ **The manual's pass/fail band will NOT catch a drifted sensor.** A thermistor reading 6.7 kΩ in a
+24.5 °C room is reporting ~18.5 °C — badly wrong, and comfortably inside the "normal" 4.3–9.6 kΩ
+window. To test for drift, compare the measured resistance against the **actual** room temperature
+using the curve above, not against the band.
 
 **SW1-3 = OFF is worth knowing before interpreting `FilterSign`:** a 100-hour filter reminder trips
 after ~4 days of running, so `FilterSign` reads ON more or less permanently on every unit and carries
