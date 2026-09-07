@@ -1148,6 +1148,46 @@ bytes are which:
 A recurring `B276` / `3276` in the BC banks appears to be a **not-present sentinel**, distinct from
 the ICs' `7FFF`.
 
+### ⚠️ The manual's terminology tables are PER-MODEL-FAMILY — do not port them onto this map
+
+The MainteToolNet manual (WT03939X75 §8) carries a separate *Operation Status Monitor Terminology*
+table for **each** outdoor-unit family, and the same mark means different things across them. A
+future session must not "correct" the empirical map above from the wrong table.
+
+Demonstrated: the `PURY-P400/500YMF-C` table defines **`TH6` as the ambient air temperature**, yet on
+our OC 66 `TH6` reads **76.2 °C** and on OC 51 **37.9 °C** — clearly a hot pipe — while `TH7` reads
+34.0 / 26.0, which *is* the ambient. That table also lists `TH11`/`TH12` for twin compressors and
+R32 composition sensing, neither of which our panels show, so it describes a **newer generation**
+than the units here (`Ver.3.10/5.02`). Likewise `SV5b`/`SV5c`, which our panel *does* show, are
+defined only in the **`PUHY`** (2-pipe heat pump) tables, not the `PURY` ones.
+
+**The offsets in §8f are labelled against our own hardware and take precedence.** Use the manual for
+*concepts*, not for mark-to-field identification.
+
+Marks whose meanings are consistent across every family's table, and therefore safe to rely on:
+
+| Mark | Meaning |
+|---|---|
+| `21S4a`/`b` | 4-way valve — switches the cooling/heating cycle, **`0` = cooling, `1` = heating** |
+| `SV1` | solenoid valve, discharge↔suction bypass — **returns oil from the oil separator** |
+| `SV4a` | capacity control and high-pressure limiting (frequency-control backup), discharge↔suction bypass |
+| `SV6a` | hot gas bypass |
+| `SV3`…`SV8`, `SV5b`/`SV5c` | capacity control of the outdoor heat exchanger (`SV5b`/`c` liquid side) |
+| `SLEV` | oil-return LEV opening — meters liquid and oil back from the accumulator |
+| `AL` | accumulator liquid level — `0` a little, `1` medium, `2` much (**overcharge**) |
+| `AK` | heat-exchanger capacity control variable |
+| `DEMAND` | input **stop** signal for the compressor (`1` effective) |
+| `NIGHT` | reduces outdoor fan frequency (`1` effective) |
+| `SNOW` | runs the outdoor fan while the compressor is stopped (`1` effective) |
+| `52F` | contactor for the No.2 fan |
+| `Repeater` | `0` prohibits / `1` permits communication with the centralised control system |
+| `THHS` | inverter radiator-plate temperature; governs the inverter cooling fan |
+| `63HS` / `63LS` | high / low pressure sensor (`63LS` also feeds refrigerant-composition sensing) |
+| `P1 (BC/main BC)` | the BC's high pressure, i.e. `63HS1`, measured at the liquid side |
+
+**`21S4a = 0` in cooling is now confirmed from the vendor side**, which independently corroborates
+§8i's finding that mixed mode does *not* reverse the 4-way valve.
+
 ### Still undecoded, and what it needs
 
 Everything below was **constant for the whole capture**, so there is no signal to correlate against
