@@ -156,7 +156,7 @@ The everyday user-settable subset is `AUTO`, `COOL`, `HEAT`, `DRY`, `FAN`. `AUTO
 
 ```
 NONE, NOUSE, TMP, QQ,
-IC,  OC,  OCi,        ← indoor / outdoor / outdoor-i
+IC,  OC,  OCi,        ← indoor unit / outdoor unit / (OCi unidentified)
 AN,  BC, BS,
 CDC, CR,  DC, DDC,
 FU, GR, GW, IDC, IU,
@@ -164,6 +164,10 @@ KA, KIC, LC, MA,
 MC, MCp, MCt, ME,
 OS, RC, SC, SR, ST, TR, TU, VDC, AIC
 ```
+
+**`OS` is an auxiliary (slave) outdoor unit** — the second and subsequent outdoor units of a
+refrigerant system built from more than one (see the `F`/`Foc` note in §8f). Its presence is the
+authoritative test for whether a loop is multi-OC.
 
 For HomeKit-relevant home installations, **`IC`** is the only one we filter on (indoor unit) — see [lib/mnet_client.js:107](../lib/mnet_client.js#L107).
 
@@ -1050,6 +1054,11 @@ when a system has more than one outdoor unit.
 - On a single-OC loop, report one frequency and do not pretend to distinguish them.
 - Do **not** hard-code `Foc = F`. On a multi-OC system they will differ — so if this ever runs
   against one, that is the moment the distinction becomes both visible and necessary.
+- **Test for it properly, don't guess:** the protocol has a dedicated model code **`OS`** for an
+  auxiliary (slave) outdoor unit (§4.3). A refrigerant system containing an `OS` is multi-OC and
+  `F ≠ Foc` is possible there; one with a lone `OC` cannot distinguish them. That is a device-list
+  check, not a measurement — so a client can decide whether to report one frequency or two without
+  ever comparing values.
 
 A 12-sample ramp on OC 51 (22 s spacing, `F` swinging 36 → 23 → 31 as units cycled) pins down which
 bytes are which:
