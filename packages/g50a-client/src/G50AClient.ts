@@ -150,9 +150,16 @@ export class G50AClient extends EventEmitter {
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
-    await this.refreshSystemInfo();
-    await this.refreshGroupList();
-    await this.pollAll();
+    try {
+      await this.refreshSystemInfo();
+      await this.refreshGroupList();
+      await this.pollAll();
+    } catch (err) {
+      // Leave the client restartable: callers retry start() when the
+      // controller (or the host's network) isn't up yet, e.g. after a power cut.
+      this.running = false;
+      throw err;
+    }
     if (!this.readyEmitted) {
       this.readyEmitted = true;
       this.emit('ready');
