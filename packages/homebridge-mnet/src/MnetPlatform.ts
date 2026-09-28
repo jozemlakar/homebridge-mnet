@@ -52,6 +52,8 @@ const DEFAULTS = {
   autoModeDeadbandC: 2.0,
 };
 
+const START_RETRY_DELAYS_MS = [5_000, 10_000, 30_000, 60_000];
+
 /**
  * Homebridge DynamicPlatformPlugin entry point.
  *
@@ -70,6 +72,8 @@ export class MnetPlatform implements DynamicPlatformPlugin {
   private readonly groupNames: Record<string, string>;
   private readonly autoModeDeadbandC: number;
   private client: G50AClient | undefined;
+  private startRetryTimer: NodeJS.Timeout | undefined;
+  private shuttingDown = false;
 
   constructor(
     private readonly log: Logger,
@@ -132,12 +136,26 @@ export class MnetPlatform implements DynamicPlatformPlugin {
       for (const a of this.accessories.values()) a.setFault(false);
     });
 
-    try {
-      await this.client.start();
-    } catch (err) {
-      this.log.error('Failed to contact controller', err);
-      return;
+    // Keep retrying: after a power cut Homebridge often starts before the
+    // host has a route to the controller (ENETUNREACH), and giving up here
+    // leaves the bridge running with stale cached accessories indefinitely.
+    let attempt = 0;
+    for (; ; attempt++) {
+      try {
+        await this.client.start();
+        break;
+      } catch (err) {
+        if (this.shuttingDown) return;
+        const delayMs = START_RETRY_DELAYS_MS[Math.min(attempt, START_RETRY_DELAYS_MS.length - 1)] ?? 60_000;
+        this.log.error(`Failed to contact controller; retrying in ${delayMs / 1000}s`, err);
+        await new Promise<void>((resolve) => {
+          this.startRetryTimer = setTimeout(resolve, delayMs);
+        });
+        this.startRetryTimer = undefined;
+        if (this.shuttingDown) return;
+      }
     }
+    if (attempt > 0) this.log.info('Connected to controller');
 
     // Best-effort: pull controller-side group names. Used as a fallback when
     // the operator hasn't set explicit `groupNames` in config — far better UX
@@ -165,6 +183,8 @@ export class MnetPlatform implements DynamicPlatformPlugin {
   }
 
   private async stop(): Promise<void> {
+    this.shuttingDown = true;
+    if (this.startRetryTimer) clearTimeout(this.startRetryTimer);
     if (this.client) {
       await this.client.stop();
       this.client = undefined;

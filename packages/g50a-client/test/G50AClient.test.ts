@@ -64,6 +64,30 @@ describe('G50AClient — startup sequence', () => {
     expect(sys?.tempUnit).toBe('C');
     await client.stop();
   });
+
+  it('can be started again after a failed start', async () => {
+    let reachable = false;
+    const { transport } = makeFakeTransport((body) => {
+      if (!reachable) throw new Error('connect ENETUNREACH');
+      if (body.includes('SystemData')) return fixture('system-data.xml');
+      if (body.includes('MnetGroupList')) return fixture('group-list.xml');
+      if (body.includes('Bulk=')) return fixture('bulk-poll-5.xml');
+      throw new Error(`Unexpected request: ${body.slice(0, 120)}`);
+    });
+
+    const client = new G50AClient({ host: '127.0.0.1' }, transport);
+    const readySpy = vi.fn();
+    client.on('ready', readySpy);
+
+    await expect(client.start()).rejects.toThrow();
+    expect(readySpy).not.toHaveBeenCalled();
+
+    reachable = true;
+    await client.start();
+    expect(readySpy).toHaveBeenCalledTimes(1);
+    expect(client.getGroups().length).toBeGreaterThan(0);
+    await client.stop();
+  });
 });
 
 describe('G50AClient — setState coalescing', () => {
