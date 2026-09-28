@@ -1,12 +1,18 @@
 name: Publish
 
+# Tags follow `<package>@<version>` (e.g. homebridge-mnet@2.0.3); publishing a
+# GitHub release for such a tag ships every workspace package whose version
+# isn't on npm yet, so one release can carry both packages or just one.
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
+  # npm Trusted Publishing: the job authenticates to npm with a GitHub OIDC
+  # token, so no NPM_TOKEN secret exists. Each package must list this repo +
+  # `publish.yml` as its trusted publisher on npmjs.com.
   id-token: write
 
 jobs:
@@ -23,11 +29,26 @@ jobs:
           cache: pnpm
           registry-url: 'https://registry.npmjs.org'
 
-      - run: pnpm install --frozen-lockfile=false
+      # Trusted Publishing needs npm >= 11.5.1; Node 22 bundles npm 10.
+      - run: npm install -g npm@latest
+
+      - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
       - run: pnpm -r test
 
-      - name: Publish packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: pnpm -r publish --access public --no-git-checks
+      # `pnpm pack` rewrites `workspace:^` to the concrete version; the tarball
+      # is then published with npm so the OIDC exchange is npm's own.
+      - name: Publish unpublished package versions
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack"
+          for dir in packages/*/; do
+            read -r name version private < <(node -p "const p=require('./${dir}package.json'); [p.name, p.version, !!p.private].join(' ')")
+            if [ "$private" = "true" ]; then
+              echo "skip $name (private)"; continue
+            fi
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip $name@$version (already on npm)"; continue
+            fi
+            (cd "$dir" && pnpm pack --pack-destination "$RUNNER_TEMP/pack" >/dev/null)
+            npm publish "$RUNNER_TEMP/pack/$name-$version.tgz" --access public
+          done

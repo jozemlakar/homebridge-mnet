@@ -38,7 +38,7 @@ homebridge-mnet/
 │       │   ├── mtool.ts             # trend-push / MnetRouter / subscription extractors
 │       │   └── cli.ts               # mtool-pcap CLI: streams / banks / subs / trend / queries
 │       └── test/                    # synthetic pcapng fixtures
-├── .github/workflows/               # CI (build+test on Node 22/24), publish on tag
+├── .github/workflows/               # CI (build+test on Node 22/24), publish on GitHub release
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json               # strict, NodeNext, ES2022
 └── eslint.config.mjs                # flat config, shared
@@ -112,6 +112,14 @@ The `apply` command sends ALL records for each Group×Day in one packet — repl
 - No comments that re-state the code. Comments explain *why* — protocol quirks, deliberate non-obvious choices.
 - Don't write to `mnet_config.json` — it's gone. Config lives in Homebridge's `config.json` under the `MNET` platform, schema in [packages/homebridge-mnet/config.schema.json](packages/homebridge-mnet/config.schema.json).
 
+## Releasing
+
+1. Bump `version` in each changed `packages/*/package.json` and merge to `master`.
+2. Tag `master` per package as `<package>@<version>` (e.g. `homebridge-mnet@2.0.3`) and push the tags.
+3. Publish a GitHub release for the tag. [publish.yml](.github/workflows/publish.yml) then publishes every non-private package whose version isn't on npm yet, via npm Trusted Publishing (OIDC — there is no `NPM_TOKEN`). Each package's trusted publisher on npmjs.com must name this repo and `publish.yml`.
+
+Publishing from a laptop still works (`pnpm -r publish --access public`), but npm requires browser 2FA confirmation for every package.
+
 ## Live test environment
 
 A G-50BA running firmware 3.22 is available on the local network for integration testing. The integration test (`INTEGRATION_HOST=<host> pnpm --filter g50a-client test:integration`) reads its address from the environment variable so nothing repo-resident pins to a specific install.
@@ -127,7 +135,7 @@ Already in place:
 - `config.schema.json` rendering via homebridge-config-ui-x
 - No peerDependencies, no TTY at startup, no post-install hacks
 - Cache files only under Homebridge's `storagePath` (we don't write any)
+- Published to npm, with GitHub releases (first: `homebridge-mnet@2.0.3`)
 
 Outstanding before applying for the verified badge:
-- Publish to npm and create the first GitHub release
 - README screenshots
