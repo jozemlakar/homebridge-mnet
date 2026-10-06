@@ -2131,9 +2131,26 @@ Still open: the `00`/`01`/`02` unidentified slots (one reads a stable ~15 °C; b
 unmapped temp), and the longer PUMY-only banks (`50`–`5A`, `92`–`96`) carry the SCm1-30 / SC1-30 /
 per-IC arrays and demand/valve flags — not yet mapped field-by-field.
 
-### Fresh-air unit (FU / GUF-100RD) uses a different command family
+### Fresh-air unit (FU / GUF-100RD) — decoded (2026-10-06)
 
-The interlocked FU (DA 43) is **not** polled on `397E` at all. Its subscription is a distinct set —
-`2180xx`, `2183xx`, `2581xx`, `2D82xx`, `2D9B61`, `3182xx`, `318Axx`, `3580xx`, `3583xx`, `3590xx`,
-`3597xx` — i.e. the GUF/Lossnay opcode family, not the IC/OC `397E`/`21xx` set. Decoding the FU
-runtime (Damper, FU-Sig, its own TH/LEV) is a separate exercise against those opcodes.
+The interlocked FU (DA 43) is **not** polled on `397E` at all; it uses the GUF/Lossnay opcode family,
+**one opcode per field** (not banked). Decoded from the same pcapng (cool/heat/idle), temperatures in
+the same signed-BCD-tenths as the IC/OC:
+
+| Opcode | Field | Encoding |
+|---|---|---|
+| `358326` | **TH1** (intake / return air) | signed BCD tenths |
+| `358010` | **TH2** (liquid pipe) | signed BCD tenths |
+| `358009` | **TH3** (gas pipe) | signed BCD tenths |
+| `358325` | **TH4** | signed BCD tenths |
+| `358106` | **SH/SC** | signed BCD tenths |
+| `318A01` | **Li** (LEV opening) | BCD integer (e.g. `0253`=253, `0628`=628) |
+| `2D9B61` | **Save** (%) | `6464` = 100/100 |
+
+**Mode / run-state** is carried in the opcode *suffix* of the `2581xx` / `3182xx` / `2D82xx` family,
+not a payload field: cooling polls `258101` and `31822E`, heating polls `258102` and `31822F`,
+stopped uses `318200`. The exact On/Off, FU-Sig (Cool ON / Heat ON / Stop) and Damper bits inside
+`3182xx`'s `05 02 .. .. 01 FF` payload are not fully pinned yet — the byte at offset 3/4 flips with
+mode (`0D` present when running) but the full bitmap is unverified. Other polled opcodes
+(`258102`, `2D8207/08`, `318231`, `359006`, `359100`, `35910A`, `359129`, `359700`) are captured but
+unmapped.
