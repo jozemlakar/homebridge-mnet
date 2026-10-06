@@ -2100,3 +2100,40 @@ at the same clock minute (e.g. 17:00) is a scheduled OFF clearing the flag, not 
 cross-check against the unit's drive state. The live snapshot equivalent is
 `AlarmStatusList` (`g50a alarms`), which lists only currently-active alarms; `AlarmList` is the
 historical log with onset/recovery pairs.
+
+## 8d-OC2. Outdoor banks DECODED — PUMY block (PUMY-P200YKM4, 2026-10-06)
+
+The PUMY mini-City-Multi outdoor unit (here **OC 89, PUMY-P200YKM4.TH fw 30.00**) answers the same
+`397Exx` banks as the PURY (§8d-OC), but a **newer MainteToolNet is required** — an older copy
+returns "Uncorrespondence unit type" and the `197F10` panel path used for the older PUMYs (OC 95/97,
+§8k) does **not** apply here; this generation is read on `397E`. Decoded from a pcapng paired with
+labelled *Operation Status Monitor* frames in **three states (cool / heat / idle)**, so each field is
+verified by its movement, not a single fit. Same signed-BCD-tenths helper as §8d unless noted.
+
+| Bank | Field map (after the lead byte) | Notes |
+|---|---|---|
+| `00` | **63HS**, **TH4**, _unid (~15, stable)_, **63LS** | BCD tenths; `7FFF`=absent in tail |
+| `01` | **TH3**, **TH6**, **TH2** | signed BCD tenths (neg = top nibble ≥ 8) |
+| `02` | **TH7**, _unid_, —, **VDC** (×0.1 V), **I(comp)** (×0.1 A) | VDC e.g. `5810`=581.0 V |
+| `09` | **GR**, **HIC SC**, **HIC SCm**, **W(comp)** (binary W), **I(input)** (×0.1 A) | W(comp) is plain binary: `05EB`=1515 W |
+| `81` | **Pdm**, **LEV_A**, **LEV_B**, **ETm**, **SC**, **SCm** | LEV_A/B integer; ETm `0090`=9.0 |
+| `90` | **F/Hz**, **Foc** | plain hex: `0x24`=36 Hz, `0x1F`=31, `0x00`=0 |
+
+Cross-mode confirmations (cool 19:48 / heat 19:54 / idle 19:58):
+
+- **F/Hz** `90`: `24`/`1F`/`00` = 36 / 31 / 0 Hz.
+- **W(comp)** `09` (binary): `05EB`/`0498`/`060C` = 1515 / 1176 / 1548 W.
+- **ETm** `81`: `0060`/`0090`/`0120` = 6.0 / 9.0 / 12.0.
+- **VDC** `02`: 560.0 → 581.0 V; **I(comp)** `02`: 9.8 → 0.0 A; **I(input)** `09`: 2.8 → 0.0 A.
+- **63HS/63LS/TH4/TH7** `00`/`02`: exact in all three frames.
+
+Still open: the `00`/`01`/`02` unidentified slots (one reads a stable ~15 °C; bank 02 has a second
+unmapped temp), and the longer PUMY-only banks (`50`–`5A`, `92`–`96`) carry the SCm1-30 / SC1-30 /
+per-IC arrays and demand/valve flags — not yet mapped field-by-field.
+
+### Fresh-air unit (FU / GUF-100RD) uses a different command family
+
+The interlocked FU (DA 43) is **not** polled on `397E` at all. Its subscription is a distinct set —
+`2180xx`, `2183xx`, `2581xx`, `2D82xx`, `2D9B61`, `3182xx`, `318Axx`, `3580xx`, `3583xx`, `3590xx`,
+`3597xx` — i.e. the GUF/Lossnay opcode family, not the IC/OC `397E`/`21xx` set. Decoding the FU
+runtime (Damper, FU-Sig, its own TH/LEV) is a separate exercise against those opcodes.
