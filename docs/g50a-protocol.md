@@ -986,6 +986,67 @@ G-50BA 3.33: two groups went `Schedule="ON"` → `"OFF"` with `today` reporting 
   `Unknown Attribute`, and — importantly — **the error fails the entire request**, not just the
   offending attribute. Probe per controller and fall back to the minimal attribute set.
 
+> ⚠️ **`Li` (LEV, bank `90`) is BCD, not hex.** Reading the 2-byte field with `int(x, 16)` silently
+> returns the wrong pulse count — raw `0041` is **41** pulses (the shut-valve floor), not `0x41` = 65.
+> This bit a live sampler on 2026-10-05; mtool's `Li` column is the BCD value. The same holds for the
+> OC banks below. Temperatures use the signed-BCD-tenths helper in §8d; whole-integer fields (LEV,
+> `Save`, fan step) are BCD read straight, no `/10`.
+
+---
+
+## 8d-OC. Memory banks DECODED — OC block (PURY-(W)P400, 2026-10-05)
+
+The outdoor unit answers the **same `397Exx`** banks as the ICs, but the field layout differs per
+device class — don't reuse the IC map on an OC. Decoded by pairing a live bus read against a
+MainteToolNet *Operation Status Monitor* screenshot of **`OC PURY-(W)P400 Adres:063`, fw 3.10**
+(capacity `0400`=P400 and fw `0310`=3.10 both confirmed via `397EF0`, see §8k). Values use the same
+**signed-BCD-tenths** encoding as the IC banks (§8d).
+
+⚠️ **Single labelled frame, and the OC was *stopped* (`F=0`, compressor off, circuit equalized).**
+Temperatures and pressures are validated; compressor / valve / current / Vdc fields were idle and
+are **not** range-validated. Running-state confirmation is still pending.
+
+### Bank `00` — OC pressures + heat-exchanger temps
+
+Response `39FE00` + lead `00`, then six 16-bit BCD-tenths fields:
+
+| Offset (payload) | Field | Panel value | Note |
+|---|---|---|---|
+| 1–2 | **63HS1 / 63LS** | 12.0 | the two pressure sensors; equalized at 12.0 when stopped, so which-is-which is unresolved from this frame |
+| 3–4 | **TH4** | 20.1 | live — drifted 19.6 → 20.1 across two samples, which is what positionally fixes this slot |
+| 5–6 | **TH7** | 18.4 | |
+| 7–8 | **63LS / 63HS1** | 12.0 | the other pressure (pairs with offset 1–2) |
+| 9–10 | **TH5** | 15.4 | |
+| 11–12 | *unidentified* | 20.7 | no matching panel label |
+
+### Bank `01` — TH3 / TH6
+
+Response `39FE01` + lead `00`, then two BCD-tenths fields: **TH3** (`0166` = 16.6) and **TH6**
+(`0130` = 13.0). Matched the panel exactly; TH3 tracked live (16.5 → 16.6).
+
+### Bank `02` — THHS + saturation temps
+
+Response `39FE02` + lead `00`: **THHS** (`0186` ≈ 18.6, panel 18.4), **Tc** (`0157` = 15.7),
+**Te** (`0157` = 15.7), then a non-temperature status word (`5720`), `0000`, and an unidentified
+`0259`. Tc/Te are exact; THHS is tentative (off 0.2 K, consistent with the 1-minute sampling gap).
+
+### Bank `04` — absent high-range sensors
+
+Response `39FE04` + `FFFF 0000`. The `FFFF` is the §8d sensor-absent sentinel — `TH15`–`TH18` read
+blank on the panel, as expected on this hardware.
+
+### Bank `80` — capacity save (NOT the IC setpoint)
+
+Response `39FE80` + lead `00`, then two plain-hex bytes = **`Save` / `Save2`** (`64` = 100 %),
+matching the panel's `Save%=100`. Note this is a **different meaning from the IC bank `80`**, whose
+*tail* holds the setpoint (§8d) — same bank number, different field per device class.
+
+### Captured but not yet decoded
+
+`397E30`, `397E50`, `397E90`, `397E91` are logged raw but unmapped. A **running-OC** labelled frame
+is needed to place `Vdc` (panel 573.0), `F`/`Foc`, the `SV1a…SV9` valve bitmap, and the
+`DEMAND`/`NIGHT`/`SNOW` flags — none of which move while the unit is stopped.
+
 ---
 
 ## 8e. BC branch valves `a` / `b` / `c` — meaning
@@ -1996,3 +2057,100 @@ no information about actual filter condition.
 circuit board has the difference depending on the model" and points at a SWA/SWB conversion table.
 The bit→switch mapping above is verified only on `Model F/P`, `Board Indoor Unit`. Do not carry a
 *meaning* (as opposed to a bit position) across models without a labelled panel for that model.
+
+## 8m. Reading the controller's stored alarm history — `<Alarm><AlarmList>`
+
+The G-50 keeps an on-board alarm history that survives the units being off, readable with a plain
+unauthenticated `getRequest`. This is what mtool's error-history views read, and it is how error
+codes were pulled for the 4N estate without MainteToolNet.
+
+```xml
+<Packet><Command>getRequest</Command>
+  <DatabaseManager>
+    <Alarm><AlarmList PriorityLevel="0"/></Alarm>
+  </DatabaseManager>
+</Packet>
+```
+
+`PriorityLevel` is **mandatory** — omitting it returns `<ERROR Point="PriorityLevel" Code="0102"
+Message="Insufficiency Attribute"/>`. It is also a **filter**, not just a flag; the history is
+partitioned across levels and you must read each one to see everything:
+
+| PriorityLevel | Holds (observed on G-50BA 3.33) |
+|---|---|
+| `0` | Comms / system faults — `6607` No-ACK, `6608` No-response, etc. (`Detect="0"`) |
+| `1` | Preliminary / intermittent codes — e.g. `1204` |
+| `2` | Sensor & refrigerant faults — e.g. `5105`, `5112`, `5115` |
+| `3` | (empty on this install) |
+
+Each `<AlarmRecord>` carries:
+
+| Attr | Meaning |
+|---|---|
+| `Index` | Row number within the level |
+| `Address` | M-NET address that raised it (OC/BC/BS or IC) |
+| `Detect` | Detecting sub-unit (often the IC branch for a BC-side fault; `0` for comms) |
+| `AlarmCode` | The 4-digit check code (look up in the unit's service handbook) |
+| `Year`…`Second` | Onset timestamp (controller clock — reliable; the OC's own clock may be wrong) |
+| `RecovYear`…`RecovSecond` | Recovery timestamp; **all blank = still active** |
+| `Count` | Repeat count for a recurring preliminary code (seen on `1204`) |
+
+A record is **active** when its `Recov*` fields are empty. A daily recovery time that always lands
+at the same clock minute (e.g. 17:00) is a scheduled OFF clearing the flag, not a real self-repair —
+cross-check against the unit's drive state. The live snapshot equivalent is
+`AlarmStatusList` (`g50a alarms`), which lists only currently-active alarms; `AlarmList` is the
+historical log with onset/recovery pairs.
+
+## 8d-OC2. Outdoor banks DECODED — PUMY block (PUMY-P200YKM4, 2026-10-06)
+
+The PUMY mini-City-Multi outdoor unit (here **OC 89, PUMY-P200YKM4.TH fw 30.00**) answers the same
+`397Exx` banks as the PURY (§8d-OC), but a **newer MainteToolNet is required** — an older copy
+returns "Uncorrespondence unit type" and the `197F10` panel path used for the older PUMYs (OC 95/97,
+§8k) does **not** apply here; this generation is read on `397E`. Decoded from a pcapng paired with
+labelled *Operation Status Monitor* frames in **three states (cool / heat / idle)**, so each field is
+verified by its movement, not a single fit. Same signed-BCD-tenths helper as §8d unless noted.
+
+| Bank | Field map (after the lead byte) | Notes |
+|---|---|---|
+| `00` | **63HS**, **TH4**, _unid (~15, stable)_, **63LS** | BCD tenths; `7FFF`=absent in tail |
+| `01` | **TH3**, **TH6**, **TH2** | signed BCD tenths (neg = top nibble ≥ 8) |
+| `02` | **TH7**, _unid_, —, **VDC** (×0.1 V), **I(comp)** (×0.1 A) | VDC e.g. `5810`=581.0 V |
+| `09` | **GR**, **HIC SC**, **HIC SCm**, **W(comp)** (binary W), **I(input)** (×0.1 A) | W(comp) is plain binary: `05EB`=1515 W |
+| `81` | **Pdm**, **LEV_A**, **LEV_B**, **ETm**, **SC**, **SCm** | LEV_A/B integer; ETm `0090`=9.0 |
+| `90` | **F/Hz**, **Foc** | plain hex: `0x24`=36 Hz, `0x1F`=31, `0x00`=0 |
+
+Cross-mode confirmations (cool 19:48 / heat 19:54 / idle 19:58):
+
+- **F/Hz** `90`: `24`/`1F`/`00` = 36 / 31 / 0 Hz.
+- **W(comp)** `09` (binary): `05EB`/`0498`/`060C` = 1515 / 1176 / 1548 W.
+- **ETm** `81`: `0060`/`0090`/`0120` = 6.0 / 9.0 / 12.0.
+- **VDC** `02`: 560.0 → 581.0 V; **I(comp)** `02`: 9.8 → 0.0 A; **I(input)** `09`: 2.8 → 0.0 A.
+- **63HS/63LS/TH4/TH7** `00`/`02`: exact in all three frames.
+
+Still open: the `00`/`01`/`02` unidentified slots (one reads a stable ~15 °C; bank 02 has a second
+unmapped temp), and the longer PUMY-only banks (`50`–`5A`, `92`–`96`) carry the SCm1-30 / SC1-30 /
+per-IC arrays and demand/valve flags — not yet mapped field-by-field.
+
+### Fresh-air unit (FU / GUF-100RD) — decoded (2026-10-06)
+
+The interlocked FU (DA 43) is **not** polled on `397E` at all; it uses the GUF/Lossnay opcode family,
+**one opcode per field** (not banked). Decoded from the same pcapng (cool/heat/idle), temperatures in
+the same signed-BCD-tenths as the IC/OC:
+
+| Opcode | Field | Encoding |
+|---|---|---|
+| `358326` | **TH1** (intake / return air) | signed BCD tenths |
+| `358010` | **TH2** (liquid pipe) | signed BCD tenths |
+| `358009` | **TH3** (gas pipe) | signed BCD tenths |
+| `358325` | **TH4** | signed BCD tenths |
+| `358106` | **SH/SC** | signed BCD tenths |
+| `318A01` | **Li** (LEV opening) | BCD integer (e.g. `0253`=253, `0628`=628) |
+| `2D9B61` | **Save** (%) | `6464` = 100/100 |
+
+**Mode / run-state** is carried in the opcode *suffix* of the `2581xx` / `3182xx` / `2D82xx` family,
+not a payload field: cooling polls `258101` and `31822E`, heating polls `258102` and `31822F`,
+stopped uses `318200`. The exact On/Off, FU-Sig (Cool ON / Heat ON / Stop) and Damper bits inside
+`3182xx`'s `05 02 .. .. 01 FF` payload are not fully pinned yet — the byte at offset 3/4 flips with
+mode (`0D` present when running) but the full bitmap is unverified. Other polled opcodes
+(`258102`, `2D8207/08`, `318231`, `359006`, `359100`, `35910A`, `359129`, `359700`) are captured but
+unmapped.
