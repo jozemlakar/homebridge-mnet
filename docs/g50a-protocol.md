@@ -2154,3 +2154,50 @@ stopped uses `318200`. The exact On/Off, FU-Sig (Cool ON / Heat ON / Stop) and D
 mode (`0D` present when running) but the full bitmap is unverified. Other polled opcodes
 (`258102`, `2D8207/08`, `318231`, `359006`, `359100`, `35910A`, `359129`, `359700`) are captured but
 unmapped.
+
+## 8n. Fresh-air unit (GUF) registration, set-request acknowledgement, MnetRouter timing (2026-10-13)
+
+Observed on one G-50BA fw 3.33 controller with a GUF-100RD fresh-air unit and PUMY outdoor units.
+
+### A GUF without a local remote registers as `FU` and goes silent
+
+- A GUF with **no local remote** defaults to **interlock mode** and registers as `Model="FU"`.
+  Until it is interlocked with a master indoor unit it is **dormant and silent on M-NET**: a raw
+  `2103` poll to its address hangs about 60 s with no reply, while the outdoor unit's
+  `RefSystemList` still lists it as `FU` (so the controller raises no alarm for it).
+- **Interlocking it with an indoor unit through the controller wakes it up.** It then answers
+  immediately, follows the master's mode and setpoint, and keeps answering when stopped.
+- Removing the interlock sends it dormant again. **Clearing the OC's stored connection information
+  (SW5-2 on the PURY/PUMY outdoor board) re-registers it as `FU` again**, so that alone does not
+  convert it.
+- After the installer fitted **local remotes** it answered, registered as `Model="IC"` in both the
+  group list and `RefSystemList`, and its `2104` reply changed. This is consistent with
+  "no remote ⇒ FU", but the remote was not tested in isolation.
+- `2104` reply layout: `2184 <attr> FFFF <DA> 07 …`. The attribute byte read `0x89` while the unit
+  was FU and `0x80` as IC (same as a working standalone GUF). The type signature (`2108` = `0D`)
+  is ventilation in both cases.
+
+### A set request is acknowledged whether or not it is applied
+
+The controller answers `<Command>setResponse</Command>` with no `<ERROR>` even when the unit does
+not apply the value, so **always read the value back**.
+
+- `Mode="AUTO"` is acknowledged and ignored when `AutoModeSW="DISABLE"`. Verified with the unit off
+  and with `Drive="ON"`: the mode was unchanged 30 s later. `AutoModeSW` is readable
+  (`<Mnet Group="N" AutoModeSW="*"/>`) and is the quick check before trying AUTO.
+- A set to a group whose unit is silent is acknowledged too (the stored defaults come back).
+- After a **mode change on a running unit** the first read-back can still show the old mode for a
+  few seconds, so re-read after 10–20 s before calling the write a failure.
+
+### Changeover is not exposed as an XML attribute
+
+`ChangeOver`, `ChangeoverMaster`, `MasterGroup`, `AutoChangeover`, `ModeLock` and `PriorityGroup`
+all return `Unknown Attribute` on `<Mnet>`. The changeover setting exists in the controller's web
+interface only.
+
+### `CommandInterval` does not delay a single frame
+
+`MnetCommandList CommandInterval` is the spacing between frames when several `MnetCommandRecord`
+entries are sent in one request. With **one** record, a `2103` poll answered in 1.7 to 4.0 s for
+values of 0, 400, 3000 and 8000 ms, so it has no effect there. The roughly 60 s hang on a silent
+unit is the controller's own retry, not this interval.
