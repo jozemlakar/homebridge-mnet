@@ -120,7 +120,18 @@ const replies = await client.sendMnetRaw(66, ['397EF0', '2100', '3112']);
 
 // Convenience: read a 16-byte memory bank (returns the payload after the 3-byte header).
 const bank80 = await client.readMnetBank(66, 0x80);
+
+// Decode an indoor unit's dip switches (the `197F00` frame MainteToolNet's DipSW Monitor uses).
+import { decodeIndoorDipSwitches, switchesOn } from 'g50a-client';
+const [r] = await client.sendMnetRaw(15, ['197F00']);
+const dip = decodeIndoorDipSwitches(r.reply);
+// → { address: 15, sw1: [...], capacityCode: 4, sw3: [...], swc: true, cn32Lockout: true, ... }
+switchesOn(dip.sw1); // → [1, 7, 8, 9]
 ```
+
+`cn32Lockout: true` means an external ON/OFF adapter on the unit's CN32 connector is holding it
+locked: the controller accepts `Drive=ON`, then the unit reverts to OFF within ~20 s. From the CLI:
+`g50a dipsw --host <h> 13 14 15`. Layout and evidence: [`docs/g50a-protocol.md §8l`](../../docs/g50a-protocol.md).
 
 ## Tests
 

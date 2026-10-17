@@ -9,6 +9,7 @@
  *   g50a report   --in file.json [--names names.json] [-o report.md]
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { decodeIndoorDipSwitches, switchesOn } from './dipsw.js';
 import { G50AClient } from './G50AClient.js';
 import { renderScheduleReport, type NameLookup } from './report.js';
 import { emptyWeeklySchedule } from './schedule.js';
@@ -125,6 +126,7 @@ function usage(): void {
       '  g50a time-sync  --host <h> [--port P] [--dry-run]    # write Mac local time to controller',
       '  g50a mnet-raw   --host <h> [--port P] --da N [--interval-ms 400] <hex> [<hex>...]',
       '  g50a mnet-bank  --host <h> [--port P] --da N --bank 0x80',
+      '  g50a dipsw      --host <h> [--port P] <da> [<da>...]',
       '  g50a clear-prohibit --host <h> [--port P] [--group N]',
       '  g50a clear-schedule --host <h> [--port P] [--group N]',
       '',
@@ -142,6 +144,8 @@ function usage(): void {
       '            (e.g. `g50a mnet-raw --host 1.2.3.4 --da 66 397EF0 397EF1 3112`)',
       'mnet-bank — read one 16-byte memory bank from a unit',
       '            (e.g. `g50a mnet-bank --host 1.2.3.4 --da 66 --bank 0x80`)',
+      'dipsw     — read indoor-unit dip switches (`197F00`) and the CN32 lockout flag',
+      '            (e.g. `g50a dipsw --host 1.2.3.4 13 14 15`)',
       'clear-prohibit — release the "centrally controlled" lock on a group, or',
       '            on every group if --group is omitted',
       'clear-schedule — write an empty 7-day weekly schedule for a group (or every',
@@ -550,6 +554,37 @@ async function cmdMnetBank(flags: Flags): Promise<void> {
   });
 }
 
+async function cmdDipsw(flags: Flags): Promise<void> {
+  const das = flags.positional.map((p) => Number.parseInt(p, 10));
+  if (das.length === 0 || das.some((d) => !Number.isInteger(d) || d < 1 || d > 250)) {
+    process.stderr.write('Error: dipsw needs one or more indoor-unit addresses, e.g. 13 14 15\n');
+    process.exit(2);
+  }
+  await withClient(flags, async (client) => {
+    for (const da of das) {
+      let reply = '';
+      try {
+        const replies = await client.sendMnetRaw(da, ['197F00']);
+        reply = replies[0]?.reply ?? '';
+      } catch (e) {
+        process.stdout.write(`DA ${pad(da, 3)} ✗ ${e instanceof Error ? e.message : String(e)}\n`);
+        continue;
+      }
+      const d = decodeIndoorDipSwitches(reply);
+      if (!d) {
+        process.stdout.write(`DA ${pad(da, 3)} ✗ ${reply || '(no reply)'}\n`);
+        continue;
+      }
+      const flag = (v: boolean | undefined): string => (v === undefined ? 'n/a' : v ? 'ON' : 'off');
+      process.stdout.write(
+        `DA ${pad(da, 3)} SW1 on=[${switchesOn(d.sw1).join(',')}] cap=${d.capacityCode} ` +
+          `SW3 on=[${switchesOn(d.sw3).join(',')}] SWC=${flag(d.swc)} ` +
+          `CN32-lockout=${d.cn32Lockout === true ? 'YES' : flag(d.cn32Lockout)}\n`,
+      );
+    }
+  });
+}
+
 function pad(v: unknown, w: number): string {
   const s = String(v);
   return s.length >= w ? s : s + ' '.repeat(w - s.length);
@@ -597,6 +632,9 @@ async function main(): Promise<void> {
       break;
     case 'mnet-bank':
       await cmdMnetBank(flags);
+      break;
+    case 'dipsw':
+      await cmdDipsw(flags);
       break;
     case 'clear-prohibit':
       await cmdClearProhibit(flags);
