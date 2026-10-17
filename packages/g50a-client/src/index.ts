@@ -1,5 +1,6 @@
 export { G50AClient, type G50AClientEvents } from './G50AClient.js';
 export { decodeBulk } from './bulkDecoder.js';
+export { decodeIndoorDipSwitches, switchesOn, type IndoorDipSwitches } from './dipsw.js';
 export { detectFirmwareFamily, type FirmwareFamily } from './firmware.js';
 export {
   renderScheduleReport,
