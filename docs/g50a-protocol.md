@@ -1873,7 +1873,8 @@ Payload = the 13 bytes after `19FF00`, zero-indexed:
 | 2–3 | **SW1**, u16 little-endian, bit *n−1* = switch *n* | `0x0100` → bit 8 → **SW1-9 ON**; the panel shows exactly one switch on, #9, and SW1-9 is *Auto restart after power failure* — which is plausibly ON estate-wide, so the mapping is confirmed by meaning and not only by position |
 | 4 | **SW2**, bit *n−1* = switch *n* | `0x04` → **SW2-3 ON**, matching the panel |
 | 5 | **SW3**, bit *n−1* = switch *n* | `0x8C` = bits 2,3,7 → **SW3-3, SW3-4, SW3-8 ON**, exactly the three the panel shows |
-| 6–8 | `D0 28 00` on `F/P` | candidates for SW4 / SW7 / SW8 / SWIC; **unresolved** — see below |
+| 6–7 | `D0 28` on every `F/P` unit seen | candidates for SW4 / SW7 / SW8 / SWIC; **unresolved** — see below |
+| 8 | **bit 3 = SWC** (air-outlet selector, the monitor's "SWIC-6"); **bit 1 = CN32 lockout** (live input, *not* a switch) | 2026-10-15..17, see *Byte 8* below; other bits always 0 so far |
 | 9–11 | **live state, NOT switches** | see the warning below |
 | 12 | `0x03` on `F/P` | |
 
@@ -1904,12 +1905,71 @@ does not. Byte 1 is `DA + 0x61` on every `F/P` unit but takes unrelated values o
 this section did. Parse only bytes 0–5 without first identifying the model via `2104`, whose
 response length also varies by type.
 
-**Why bytes 6–8 are still unresolved:** the panel also shows **SW4, SW7, SW8 and SWIC** (London reads
-SW4-5, SW7-4, SW8-1, SWIC-2/3/4 ON), and those bytes are constant at `D0 28 00` across all eight
-`F/P` units — which are also identical in those switch banks, so there is no signal to correlate.
-The GUFs differ in both, but their layout differs too, so they cannot be diffed against the `F/P`
-units either. Resolving this needs a labelled panel for a unit that shares the `F/P` layout **but
-differs in SW4/SW7/SW8/SWIC**.
+**Why bytes 6–7 are still unresolved:** the panel also shows **SW4, SW7, SW8 and SWIC** (London reads
+SW4-5, SW7-4, SW8-1, SWIC-2/3/4 ON), and those bytes are constant at `D0 28` across every `F/P` unit
+seen (eight on one floor, seventeen on another) — which are also identical in those switch banks, so
+there is no signal to correlate. The GUFs differ in both, but their layout differs too, so they
+cannot be diffed against the `F/P` units either. Resolving this needs a labelled panel for a unit
+that shares the `F/P` layout **but differs in SW4/SW7/SW8**.
+
+### Byte 8 — SWC and the CN32 lockout (2026-10-15..17)
+
+Seventeen `F/P` units on one PURY loop returned four values of byte 8 — `00`, `02`, `08`, `0A` — so two
+bits vary. Labelled DipSW Monitor panels for three of them separate the two bits:
+
+| Unit | byte 8 | Panel differs from the `00` unit in | Runs on `Drive=ON`? |
+|---|---|---|---|
+| A | `00` | — | yes |
+| B | `0A` | **SWIC-6 (SWC) ON**, nothing else | **no** |
+| C | `08` | **SWIC-6 (SWC) ON**, nothing else | yes |
+
+B and C share the one visible difference (SWC), so **bit 3 (`0x08`) = SWC**. B's extra bit 1 has
+**no switch on the panel** at all. Per OC404 §5, SWC chooses upper-only vs upper-and-lower air
+outlet: a mechanical setting, unrelated to running.
+
+**Bit 1 (`0x02`) is the CN32 remote ON/OFF input holding the unit in its external-control lockout.**
+Evidence, all from the same loop:
+
+- It was set on exactly the 9 units that would not stay on, and on none of the 8 that ran — across
+  both `SWC` values, so it is not a proxy for SWC.
+- Each of those 9 had a field-fitted **window-contact interlock** on CN32 (a PAC-SE55RA-style
+  adapter feeding a small relay module). The window wiring had been cut during a refurbishment.
+  Shorting or opening the window wires changed nothing — the module held its output regardless.
+- **Unplugging CN32 (or cutting the cable after the module) cleared bit 1 on every one of the 9**,
+  read back on the bus immediately, and each unit then accepted `Drive=ON` and kept running. Seven
+  of them read `0A → 08`, two `02 → 00` — SWC untouched.
+- It survived a power cycle of all indoor units while the adapter stayed plugged in — live input
+  state, not a latched fault.
+
+Behaviour while bit 1 is set, worth recognising without a bus read:
+
+- The controller **accepts** `setRequest Drive="ON"` (setResponse, no error), `Mode` and `SetTemp`
+  stick, but `Drive` reads back **OFF within ~20 s** — every time, slow-paced or not. Not bus load.
+- No alarm is raised and `ErrorSign` stays OFF.
+- A local remote shows a **blinking prohibit icon** when ON is pressed; `CHECK` reports only "RC"
+  (no stored error).
+- `DriveItem`/`ModeItem` etc. still read `CHK_OFF` — this is *not* the controller's prohibit
+  (`0D0B`, `clear-prohibit` cannot release it).
+
+The adapter sheet (PAC-SE55RA-E, written for Mr.SLIM A-control) explains it: CN32 Red–Brown closed =
+remote/central ON/OFF locked out and the unit follows Orange–Red, which is open in a prohibit-only
+wiring = OFF. That sheet is not verified against City Multi boards, but the bus behaviour matches it.
+
+`g50a dipsw <da>...` decodes bytes 0–5 and both byte-8 flags (`decodeIndoorDipSwitches` in
+`g50a-client`); the flags are reported only for the 13-byte `F/P` layout.
+
+### SW1-1 ON with no remote fitted — `TH1` freezes
+
+All seventeen units above have **SW1-1 ON** (room temperature from the remote's sensor) and, during
+the refurbishment, **no remote attached**. Their `397E00` `TH1` and the XML `InletTemp` then **did
+not change at all** — same value across ~80 min while `TH2`/`TH3` on the same unit moved by up to
+1.2 K, and the same values as 10 days earlier — even on units running in cooling. Readings came in
+coarse ~0.4 K steps (`21.3 / 21.7 / 22.1 / 22.4`). On the two units later fitted with a remote,
+`TH1` started moving (21.3 → 20.5 and 21.7 → 20.5 within the hour). The likely reading: with SW1-1
+ON, `TH1`/`InletTemp` reports the remote's sensor, and with no remote it is a stale value rather than
+the intake thermistor. Two units is thin evidence; one more unit without a known remote also moved,
+so this is not yet a rule. Until it is, treat a frozen `InletTemp` on a remote-less unit as "no room
+reading", not as a room at constant temperature.
 
 ### ⚠️ Bytes 9–11 are live state — an earlier reading of them was wrong
 
@@ -2201,3 +2261,55 @@ interface only.
 entries are sent in one request. With **one** record, a `2103` poll answered in 1.7 to 4.0 s for
 values of 0, 400, 3000 and 8000 ms, so it has no effect there. The roughly 60 s hang on a silent
 unit is the controller's own retry, not this interval.
+
+## 8o. Bus reply strings, ping replies, mode writes and remote CHECK (2026-10-15..17)
+
+Observed on one G-50BA fw 3.33 controller with PURY (heat-recovery) and PUMY loops of `F/P`
+(PFFY) indoor units. Generic behaviour; the building-specific log lives with the installation.
+
+### `MnetRouter` reply strings are not all "absent"
+
+The text in `RcvData` distinguishes cases that matter for diagnosis. Capitalisation varies between
+replies (`#NO ACK ERROR` and `#No Ack Error` both occur), so match case-insensitively.
+
+| `RcvData` | Seen when | Read as |
+|---|---|---|
+| `#No Ack Error` | address with nothing on it (§8h); also a powered, addressed unit whose bus side was not answering | **nothing acknowledged the frame** — not proof the device is physically absent |
+| `#No Response Error` | a known unit that had dropped off mid-day (`6607` raised at the same minute) | the unit was expected but did not answer |
+| `#No Answer Error` | once each on two healthy units; an immediate retry succeeded | transient — retry before concluding anything |
+| *(no reply, ~60 s hang)* | a registered device that is dormant or silent (§8n) | expected-but-silent; the controller's own retry |
+
+The same unit moved between these states: `No Response` one day, `No Ack` the next with
+28 V present on its M-NET terminals and its own remote working, then (after a power cycle)
+**intermittent** — some opcodes answered, others `No Ack`, on consecutive reads. It became fully
+reliable after a CN32 lockout on it was removed (§8l *Byte 8*); whether the two were related was
+not isolated. Practical rule: **retry the same frame two or three times, and try a second opcode
+(`197F00`, `397E00`) before declaring a unit off the bus.**
+
+### `2103` ping replies
+
+| Device | `2103` reply |
+|---|---|
+| Indoor unit | `2183 01 <DA>` — e.g. `2183010D` for DA 13 |
+| Outdoor unit, BC controller, BS | `2183FF` |
+
+A clean `2183…` is the cheapest "is it on the bus" check.
+
+### An alarm `Recov*` stamp is not proof of recovery
+
+A `6607` (no ACK) on an indoor unit received a recovery timestamp at 05:16 while the unit still did
+not acknowledge any frame. Together with the scheduled-OFF artefact in §8m: confirm recovery on the
+bus (`2103`) before closing an alarm on the strength of `Recov*`.
+
+### A `Mode` write re-applies the mode's setpoint limits
+
+Units holding `SetTemp="17"` in COOL came back with **`SetTemp="19"`** after a `setRequest` carrying
+only `Mode="COOL"` — the mode write re-clamped the setpoint to the cool range. Send `SetTemp`
+explicitly with every `Mode` write, and read both back.
+
+### The local remote's CHECK shows the stored error, not necessarily a current one
+
+On an MA remote, `CHECK` displayed an error code and address that were last season's (the sensor
+had since been replaced); the unit's actual problem was the CN32 lockout, which stores no error
+(`CHECK` shows only "RC" on a unit that never faulted). Cross-check a remote's error code against
+the controller's `AlarmList` dates before acting on it.
