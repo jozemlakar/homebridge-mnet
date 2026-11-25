@@ -1024,6 +1024,14 @@ Response `39FE00` + lead `00`, then six 16-bit BCD-tenths fields:
 Response `39FE01` + lead `00`, then two BCD-tenths fields: **TH3** (`0166` = 16.6) and **TH6**
 (`0130` = 13.0). Matched the panel exactly; TH3 tracked live (16.5 → 16.6).
 
+**What TH6 is on PURY-(W)P400 fw 3.10/5.02 (settled 2026-11-25):** MainteToolNet's own tooltip on
+the Refrigerant Circuit Diagram reads *"TH6 — Thermistor — Indicates the inlet pipe temperature of
+the heat exchanger"* (the outdoor coil), and the diagram puts it on that coil pipe. It is **not**
+outdoor air; `TH7` is the outdoor air. Behaviour matches: ~76 °C in cooling, a few K above `Te` in
+heating (−6.5 on the panel, −9.1 on the bus minutes later, `Te` ≈ −15). A **flat value near outdoor
+air** (e.g. −0.1 for 7 min at `TH7` 0.7) means no flow through that coil section (capacity control
+has it closed). It is not a stuck sensor. Signed BCD: top nibble ≥ 8 = negative (`8091` = −9.1).
+
 ### Bank `02` — THHS + saturation temps
 
 Response `39FE02` + lead `00`: **THHS** (`0186` ≈ 18.6, panel 18.4), **Tc** (`0157` = 15.7),
@@ -1145,6 +1153,12 @@ So a refrigerant system may be built from **several outdoor units** — a P400 c
 2 × P200 — and with no `OS` present `Fos = 0`, making **`F` ≡ `Foc` identically**. That is arithmetic,
 not coincidence, and no capture on a single-OC loop can ever separate them.
 
+> ⚠️ **Contradicted 2026-11-25:** a single-OC PURY-(W)P400 (no OS) in **defrost** showed **`F 50`,
+> `Foc 30`** on the MainteToolNet panel (`Ctrl Mode Defrost`, `21S4a 0`, FAN 0). So `F ≠ Foc` does occur
+> without an OS, at least in defrost: `F` is a control variable and can carry a target the compressor
+> isn't running at. A defrost is the state to capture if `F` and `Foc` (bank `90` bytes 2/5/6) are
+> ever to be separated. Outside defrost they stayed equal on every panel that day.
+
 ⚠️ **`F` is a *control variable*, not a measurement.** The official name is "temporary compressor
 frequency **for calculation**", and the same wording covers `Foc`, `Fos`, `F1` and `F2`. Do not treat
 it as observed shaft speed — in particular, power estimated from `Vdc`/`Iu`/`Iw`/`F` inherits that
@@ -1208,6 +1222,13 @@ bytes are which:
 
 A recurring `B276` / `3276` in the BC banks appears to be a **not-present sentinel**, distinct from
 the ICs' `7FFF`.
+
+**BC derived values are plain differences of panel fields** (checked exactly on two BCs, ver 7.04,
+2026-11-25):
+`SC1 = PT1 − TH11`, `SC6 = PT3 − TH16`, `SH2 = TH12 − TH15`. `PT1`/`PT3` behave as the saturation
+temperatures of `PS1`/`PS3`. MainteToolNet tooltips: `SH2` *"bypass outlet superheat"*, `SC6` *"LEV3 inlet subcool"*. Note that
+TH11 sits **downstream of the first HIC**, so `SC1` includes the subcooling the HIC adds on purpose.
+Don't treat a high `SC1` as proof of a healthy charge.
 
 ### ⚠️ The manual's terminology tables are PER-MODEL-FAMILY — do not port them onto this map
 
